@@ -71,9 +71,6 @@
 #include "functions_ln/ln_fn_terminal.h"
 #include "functions_ln/ln_fn_utility.h"
 #include "functions_ln/ln_fn_weapon.h"
-#if JIP_DEBUG
-#include "internal/debug.h"
-#endif
 
 bool NVSEPlugin_Query(const NVSEInterface *nvse, PluginInfo *info)
 {

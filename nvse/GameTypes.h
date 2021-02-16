@@ -234,7 +234,7 @@ public:
 		return node ? node->data : NULL;
 	}
 
-	SInt32 AddAt(Item *item, SInt32 index)
+	SInt32 Insert(Item *item, SInt32 index)
 	{
 		if (!item) return eListInvalid;
 		Node *node;
@@ -270,7 +270,7 @@ public:
 		return index;
 	}
 
-	void Insert(Item *item)
+	void Prepend(Item *item)
 	{
 		if (item)
 		{
@@ -996,20 +996,5 @@ public:
 			return idx;
 		else
 			return -1;
-	}
-};
-
-struct CoordXY
-{
-	float	x;
-	float	y;
-
-	CoordXY() {}
-	CoordXY(float _x, float _y) : x(_x), y(_y) {}
-
-	inline CoordXY& operator =(const CoordXY &rhs)
-	{
-		*(double*)this = *(double*)&rhs;
-		return *this;
 	}
 };

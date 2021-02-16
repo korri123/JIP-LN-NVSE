@@ -353,6 +353,8 @@ enum ObjectVtbl
 	kVtbl_BSShaderNoLightingProperty =				0x10AE670,
 	kVtbl_BSShaderPPLightingProperty =				0x10AE0D0,
 	kVtbl_SkyShaderProperty =						0x10B8CE0,
+	kVtbl_NiFloatExtraData =						0x10A0EC4,
+	kVtbl_BSBound =									0x10C2B64,
 
 	kVtbl_ImageSpaceModifierInstanceForm =			0x102D12C,
 
@@ -450,13 +452,13 @@ public:
 	virtual void		Unk_36(bool set);	// 00020000
 	virtual void		Unk_37(void);		// write esp format
 	virtual void		readOBNDSubRecord(ModInfo * modInfo);	// read esp format
-	virtual bool		Unk_39(void);
+	virtual bool		Unk_39(void);		// Identical to IsBoundObject (3A)
 	virtual bool		IsBoundObject();
-	virtual bool		Unk_3B(void);
+	virtual bool		IsMagicItem();		// EnchantmentItem, SpellItem, IngredientItem, AlchemyItem
 	virtual bool		GetIsReference();
-	virtual bool		IsArmorAddon();
-	virtual bool		Unk_3E(void);
-	virtual bool		Unk_3F(void);	// returnTrue for refr whose baseForm is a TESActorBase
+	virtual bool		IsArmorAddon();		// TESObjectARMA
+	virtual bool		IsActorBase();		// TESNPC or TESCreature
+	virtual bool		IsMobileObject();	// Actor, Projectile or Explosion
 	virtual bool		IsActor(void);
 	virtual UInt32		Unk_41(void);
 	virtual void		CopyFrom(const TESForm * form);
@@ -468,8 +470,8 @@ public:
 	virtual bool		Unk_48(UInt32 formType);	// returns if the same FormType is passed in
 	virtual bool		Unk_49(void * arg0, void * arg1, void * arg2, void * arg3, void * arg4);	// looks to be func33 in Oblivion
 	virtual void		SetRefID(UInt32 refID, bool generateID);
-	virtual char *		GetName2(void);
-	virtual char *		GetName(void);
+	virtual const char	*GetName(void);
+	virtual const char	*GetEditorID(void);
 	virtual bool		SetEditorID(const char * edid);		// simply returns true at run-time
 	// 4E
 
@@ -485,7 +487,7 @@ public:
 		kFormFlags_Initialized =	0x00000008,	// set by TESForm::InitItem()
 		kFormFlags_CastShadows =	0x00000200,
 		kFormFlags_QuestItem =		0x00000400,
-		kFormFlags_IsPermanent =	0x00000800,
+		kFormFlags_Disabled =		0x00000800,
 		kFormFlags_DontSaveForm =	0x00004000,	// TODO: investigate
 		kFormFlags_Compressed =		0x00040000,
 	};
@@ -1373,7 +1375,7 @@ public:
 	// return the nth package
 	SInt32 AddPackageAt(TESPackage* pPackage, SInt32 anIndex)
 	{
-		return packageList.AddAt(pPackage, anIndex == -1 ? eListEnd : anIndex);
+		return packageList.Insert(pPackage, anIndex == -1 ? eListEnd : anIndex);
 	}
 
 	TESPackage* RemovePackageAt(SInt32 anIndex)
@@ -1538,13 +1540,6 @@ class TESRaceForm : public BaseFormComponent
 {
 public:
 	TESRace	* race;	// 04
-};
-
-// 8
-// ### derives from NiObject
-class BSTextureSet : public NiObject
-{
-public:
 };
 
 // 0C
@@ -3883,8 +3878,8 @@ public:
 	struct Offset_Data
 	{
 		UInt32		**unk00;	// 00 array of UInt32 stored in OFST record.
-		CoordXY		min;		// 04 NAM0
-		CoordXY		max;		// 0C NAM9
+		NiPoint2	min;		// 04 NAM0
+		NiPoint2	max;		// 0C NAM9
 		UInt32		fileOffset;	// 14 TESWorldspace file offset in modInfo
 	};	// 014
 
@@ -3939,8 +3934,8 @@ public:
 	float				worldMapCellX;		// 94
 	float				worldMapCellY;		// 98
 	BGSMusicType		*musicType;			// 9C
-	CoordXY				min;				// A0
-	CoordXY				max;				// A8
+	NiPoint2			min;				// A0
+	NiPoint2			max;				// A8
 	OffsetDataMap		offsetMap;			// B0
 	String				editorID;			// C0
 	float				defaultLandHeight;	// C8
@@ -5121,12 +5116,11 @@ public:
 		return list.GetNthItem(n);
 	}
 
-	UInt32 AddAt(TESForm* pForm, SInt32 n) {
-		SInt32	result = list.AddAt(pForm, n);
-
-		if(result >= 0 && IsAddedObject(n))
+	UInt32 AddAt(TESForm* pForm, SInt32 n)
+	{
+		SInt32 result = list.Insert(pForm, n);
+		if ((result >= 0) && IsAddedObject(n))
 			numAddedObjects++;
-
 		return result;
 	}
 
@@ -5160,16 +5154,15 @@ public:
 		numAddedObjects = 0;
 	}
 };
-
 STATIC_ASSERT(sizeof(BGSListForm) == 0x024);
 
 // 08
 class BGSPerkEntry
 {
 public:
-	virtual void	Fn_00(void);
-	virtual void	Fn_01(void);
-	virtual void	Fn_02(void);
+	virtual bool	CheckConditionFilters(UInt32 numFilters, void *argsPtr);
+	virtual UInt8	GetFunctionType();
+	virtual BGSEntryPointFunctionData	*GetFunctionData();
 	virtual void	Fn_03(void);
 	virtual UInt32	GetType();		//	0 - Quest; 1 - Ability; 2 - Entry Point
 	virtual void	Fn_05(void);
@@ -5385,9 +5378,9 @@ public:
 		kFlags_IKData =			2,
 		kFlags_BipedData =		4,
 		kFlags_Explodable =		8,
-		kFlags_IsHead =			16,
-		kFlags_Headtracking =	32,
-		kFlags_Absolute =		64,
+		kFlags_IsHead =			0x10,
+		kFlags_Headtracking =	0x20,
+		kFlags_Absolute =		0x40,
 	};
 
 	String				partNode;				// 04

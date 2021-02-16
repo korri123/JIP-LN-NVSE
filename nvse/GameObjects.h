@@ -16,7 +16,7 @@ public:
 	virtual void		Unk_55(void);
 	virtual void		Unk_56(void);
 	virtual bool		IsObstacle();
-	virtual void		Unk_58(void);
+	virtual bool		BaseIsQuestItem();
 	virtual void		Unk_59(void);
 	virtual void		Unk_5A(void);
 	virtual void		Unk_5B(void);
@@ -70,7 +70,7 @@ public:
 	virtual void		Unk_8A(void);			// SetParentCell (Interior only ?)
 	virtual bool		HasHealth(bool arg0);	// HasHealth (baseForm health > 0 or Flags bit23 set)
 	virtual bool		GetHasKnockedState();
-	virtual bool		Unk_8D(void);
+	virtual bool		GetIsParalyzed();
 	virtual void		Unk_8E(void);
 	virtual void		Unk_8F(void);
 	virtual void		Unk_90(void);
@@ -130,13 +130,14 @@ public:
 	bool IsDestroyed() const {return (flags & kFlags_Destroyed) != 0;}
 
 	NiVector3 *PosVector() {return (NiVector3*)&posX;}
-	CoordXY *PosXY() {return (CoordXY*)&posX;}
+	NiPoint2 *PosXY() {return (NiPoint2*)&posX;}
 
 	void Update3D();
 	TESContainer *GetContainer();
 	bool IsMapMarker();
 
 	TESForm *GetBaseForm();
+	TESForm *GetBaseForm2();
 	bool GetDisabled();
 	ExtraContainerChanges *GetOrCreateContainerChanges();
 	ExtraContainerChanges::EntryDataList *GetContainerChangesList();
@@ -182,8 +183,8 @@ public:
 	virtual void		Unk_91(void);
 	virtual void		Unk_92(void);
 	virtual void		Unk_93(void);
-	virtual void		Unk_94(void);
-	virtual void		Unk_95(void);
+	virtual void		Move(float scale, NiVector3 *vec, int movementFlags);
+	virtual void		Jump();
 	virtual void		Unk_96(void);
 	virtual void		Unk_97(void);
 	virtual void		Unk_98(void);
@@ -191,17 +192,17 @@ public:
 	virtual void		Unk_9A(void);
 	virtual void		Unk_9B(void);
 	virtual void		Unk_9C(void);
-	virtual void		Unk_9D(void);
+	virtual bool		IsInCombat(bool notSearching);
 	virtual void		Unk_9E(void);
 	virtual void		Unk_9F(void);
 	virtual void		Unk_A0(void);
 	virtual void		Unk_A1(void);
 	virtual void		Unk_A2(void);
 	virtual void		Unk_A3(void);
-	virtual void		Unk_A4(void);
-	virtual void		Unk_A5(void);
-	virtual void		Unk_A6(void);
-	virtual void		Unk_A7(void);
+	virtual bool		HasStartingWorldOrCell();
+	virtual TESWorldSpace	*GetStartingWorld();
+	virtual TESObjectCELL	*GetStartingCell();
+	virtual NiVector3	*GetStartingPos(NiVector3 *outPos);
 	virtual void		Unk_A8(void);
 	virtual void		Unk_A9(void);
 	virtual void		Unk_AA(void);
@@ -209,7 +210,7 @@ public:
 	virtual void		Unk_AC(void);
 	virtual void		Unk_AD(void);
 	virtual void		Unk_AE(void);
-	virtual float		Unk_AF(UInt32 arg1);
+	virtual float		AdjustRot(UInt32 arg1);
 	virtual void		Unk_B0(void);
 	virtual void		Unk_B1(void);
 	virtual void		Unk_B2(void);
@@ -404,7 +405,7 @@ public:
 	virtual void		Unk_D2(void);
 	virtual void		Unk_D3(void);
 	virtual void		Unk_D4(void);
-	virtual void		Unk_D5(void);
+	virtual float		GetDefaultTurningSpeed();
 	virtual bool		IsOverencumbered();
 	virtual void		Unk_D7(void);
 	virtual bool		IsPlayerRef();
@@ -414,12 +415,12 @@ public:
 	virtual void		Unk_DC(void);
 	virtual void		Unk_DD(void);
 	virtual void		Unk_DE(void);
-	virtual void		Unk_DF(void);
+	virtual TESRace		*GetRace();
 	virtual void		Unk_E0(void);
 	virtual void		Unk_E1(void);
 	virtual void		Unk_E2(void);
 	virtual bool		IsPushable();
-	virtual UInt32		GetActorType(void);	// Creature = 0, Character = 1, PlayerCharacter = 2
+	virtual UInt32		GetActorType();	// Creature = 0, Character = 1, PlayerCharacter = 2
 	virtual void		SetActorValue(UInt32 avCode, float value);
 	virtual void		SetActorValueInt(UInt32 avCode, UInt32 value);
 	virtual void		Unk_E7(void);
@@ -443,7 +444,7 @@ public:
 	virtual void		Unk_F9(void);
 	virtual void		Unk_FA(void);
 	virtual void		Unk_FB(TESForm *form, UInt32 arg2, UInt8 arg3, UInt8 arg4);
-	virtual void		DecreaseAmmo(void);
+	virtual void		DecreaseAmmo();
 	virtual void		Unk_FD(void);
 	virtual void		Unk_FE(void);
 	virtual void		Unk_FF(void);
@@ -454,8 +455,8 @@ public:
 	virtual void		Unk_104(void);
 	virtual void		Unk_105(void);
 	virtual void		Unk_106(void);
-	virtual void		Unk_107(void);
-	virtual void		Unk_108(void);
+	virtual void		SetAlpha(float alpha);
+	virtual float		GetAlpha();
 	virtual void		Unk_109(void);
 	virtual CombatController	*GetCombatController(void);
 	virtual Actor		*GetCombatTarget(void);
@@ -568,7 +569,7 @@ public:
 	bool								forceRun;					// 124
 	bool								forceSneak;					// 125
 	UInt8								byte126;					// 126-
-	UInt8								byte127;					// 127-
+	bool								searchingForEnemies;		// 127
 	Actor								*combatTarget;				// 128
 	BSSimpleArray<Actor*>				*combatTargets;				// 12C
 	BSSimpleArray<Actor*>				*combatAllies;				// 130
@@ -618,8 +619,8 @@ public:
 	UInt32								unk1A0;						// 1A0-
 	UInt32								unk1A4;						// 1A4-
 	UInt32								unk1A8;						// 1A8-
-	UInt32								unk1AC;						// 1AC-
-	UInt8								byte1B0;					// 1B0-
+	UInt32								sitSleepState;				// 1AC-
+	UInt8								isTurret;					// 1B0-
 	bool								forceHit;					// 1B1-
 	UInt8								byte1B2;					// 1B2
 	UInt8								byte1B3;					// 1B3
@@ -648,6 +649,8 @@ public:
 	char GetCurrentAIPackage();
 	char GetCurrentAIProcedure();
 	bool IsFleeing();
+	ContChangesEntry *GetWeaponInfo();
+	ContChangesEntry *GetAmmoInfo();
 	TESObjectWEAP *GetEquippedWeapon();
 	bool IsItemEquipped(TESForm *item);
 	UInt8 EquippedWeaponHasMod(UInt8 modID);
@@ -718,6 +721,14 @@ struct PerkRank
 	UInt8		pad05[3];
 };
 
+struct CasinoStats
+{
+	UInt32		casinoRefID;
+	UInt32		earnings;
+	UInt16		unk08;
+	UInt8		gap0A[2];
+};
+
 // E50
 class PlayerCharacter : public Character
 {
@@ -784,9 +795,10 @@ public:
 	UInt8								byte5FB;				// 5FB
 	tList<TESObjectREFR>				teammates;				// 5FC
 	TESObjectREFR						*lastExteriorDoor;		// 604
-	void								*unk608;				// 608
-	void								*unk60C;				// 60C
-	void								*unk610;				// 610
+	UInt8								isPlayingAttackSound;	// 608
+	UInt8								pad609[3];				// 609
+	tList<void>							*actionList;			// 60C
+	tList<CasinoStats>					*casinoDataList;		// 610
 	tList<TESCaravanCard>				*caravanCards1;			// 614
 	tList<TESCaravanCard>				*caravanCards2;			// 618
 	UInt32								unk61C[6];				// 61C

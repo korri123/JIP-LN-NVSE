@@ -79,7 +79,7 @@ __declspec(naked) UInt32 __vectorcall cvtd2ui(double value)
 	__asm
 	{
 		lea		eax, [esp-8]
-		movsd	[eax], xmm0
+		movq	qword ptr [eax], xmm0
 		fld		qword ptr [eax]
 		fisttp	qword ptr [eax]
 		mov		eax, [eax]
@@ -310,22 +310,17 @@ __declspec(naked) void __fastcall MemZero(void *dest, UInt32 bsize)
 {
 	__asm
 	{
-		push	edi
 		test	ecx, ecx
 		jz		done
+		shr		edx, 2
+		jz		done
+		push	edi
 		mov		edi, ecx
 		xor		eax, eax
 		mov		ecx, edx
-		shr		ecx, 2
-		jz		write1
 		rep stosd
-	write1:
-		and		edx, 3
-		jz		done
-		mov		ecx, edx
-		rep stosb
-	done:
 		pop		edi
+	done:
 		retn
 	}
 }
@@ -794,7 +789,7 @@ __declspec(naked) char* __vectorcall FltToStr(char *str, double value)
 		push	esi
 		push	edi
 		lea		eax, [esp-8]
-		movsd	[eax], xmm0
+		movq	qword ptr [eax], xmm0
 		fld		qword ptr [eax]
 		fld		st
 		fisttp	qword ptr [eax]
@@ -802,10 +797,10 @@ __declspec(naked) char* __vectorcall FltToStr(char *str, double value)
 		fild	qword ptr [eax]
 		fsubp	st(1), st
 		fstp	qword ptr [eax]
-		movsd	xmm0, [eax]
+		movq	xmm0, qword ptr [eax]
 		/*roundsd	xmm2, xmm0, 3
 		lea		eax, [esp-8]
-		movsd	[eax], xmm2
+		movq	qword ptr [eax], xmm2
 		fld		qword ptr [eax]
 		fisttp	qword ptr [eax]
 		mov		esi, [eax]
@@ -1034,7 +1029,7 @@ __declspec(naked) double __vectorcall StrToDbl(const char *str)
 		retn
 	overflow:
 		movzx	eax, dl
-		movsd	xmm0, kValueBounds[eax*8]
+		movq	xmm0, kValueBounds[eax*8]
 		pop		edi
 		pop		esi
 		retn

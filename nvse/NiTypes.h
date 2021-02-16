@@ -9,6 +9,23 @@ struct NiRTTI
 	NiRTTI			*parent;
 };
 
+// 08
+struct NiPoint2
+{
+	float	x;
+	float	y;
+
+	NiPoint2() {}
+	NiPoint2(float _x, float _y) : x(_x), y(_y) {}
+	NiPoint2(const NiPoint2 &rhs) {*(double*)this = *(double*)&rhs;}
+
+	inline NiPoint2& operator=(const NiPoint2 &rhs)
+	{
+		*(double*)this = *(double*)&rhs;
+		return *this;
+	}
+};
+
 // 24
 struct NiMatrix33
 {
@@ -33,6 +50,11 @@ struct NiVector3
 
 	NiVector3() {}
 	NiVector3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+
+	float operator[](char axis)
+	{
+		return ((float*)&x)[axis];
+	}
 
 	void operator+=(const NiVector3 &rhs)
 	{
@@ -278,13 +300,13 @@ public:
 		T_Data		*data;
 	};
 
-	virtual void	*Destroy(bool doFree);
+	virtual void	Destroy(bool doFree);
 	virtual UInt32	CalculateBucket(UInt32 key);
 	virtual bool	CompareKey(UInt32 lhs, UInt32 rhs);
 	virtual void	FillEntry(Entry *entry, UInt32 key, T_Data data);
-	virtual void	Fn_04(UInt32 arg);
-	virtual Entry	*AllocNewEntry();	// locked operations
-	virtual void	FreeEntry(Entry *entry);	// locked operations
+	virtual void	FreeKey(Entry *entry);
+	virtual Entry	*AllocNewEntry();
+	virtual void	FreeEntry(Entry *entry);
 
 	UInt32		m_numBuckets;	// 04
 	Entry		**m_buckets;	// 08
@@ -393,13 +415,13 @@ public:
 		T_Data		data;
 	};
 
-	virtual NiTMapBase	*Destructor(bool doFree);
-	virtual UInt32		CalculateBucket(T_Key key);
-	virtual bool		Equal(T_Key key1, T_Key key2);
-	virtual void		FillEntry(Entry *entry, T_Key key, T_Data data);
-	virtual	void		Unk_004(void *arg0);
-	virtual	Entry		*AllocNewEntry();
-	virtual	void		FreeEntry(Entry *entry);
+	virtual void	Destroy(bool doFree);
+	virtual UInt32	CalculateBucket(T_Key key);
+	virtual bool	Equal(T_Key key1, T_Key key2);
+	virtual void	FillEntry(Entry *entry, T_Key key, T_Data data);
+	virtual	void	FreeKey(Entry *entry);
+	virtual	Entry	*AllocNewEntry();
+	virtual	void	FreeEntry(Entry *entry);
 
 	UInt32		numBuckets;	// 04
 	Entry		**buckets;	// 08
@@ -411,6 +433,8 @@ public:
 			if (Equal(key, entry->key)) return entry->data;
 		return NULL;
 	}
+
+	void FreeBuckets();
 
 	class Iterator
 	{
@@ -445,6 +469,51 @@ public:
 
 	Iterator Begin() {return Iterator(*this);}
 };
+
+template <typename T_Key, typename T_Data>
+__declspec(naked) void NiTMapBase<T_Key, T_Data>::FreeBuckets()
+{
+	__asm
+	{
+		cmp		dword ptr [ecx+0xC], 0
+		jz		done
+		push	ebx
+		push	esi
+		push	edi
+		mov		ebx, ecx
+		mov		esi, [ecx+8]
+		mov		edi, [ecx+4]
+		ALIGN 16
+	bucketIter:
+		mov		eax, [esi]
+		test	eax, eax
+		jz		bucketNext
+	entryIter:
+		push	dword ptr [eax]
+		push	eax
+		push	eax
+		mov		ecx, ebx
+		mov		eax, [ecx]
+		call	dword ptr [eax+0x10]
+		mov		ecx, ebx
+		mov		eax, [ecx]
+		call	dword ptr [eax+0x18]
+		pop		eax
+		test	eax, eax
+		jnz		entryIter
+		mov		[esi], eax
+	bucketNext:
+		add		esi, 4
+		dec		edi
+		jnz		bucketIter
+		mov		[ebx+0xC], eax
+		pop		edi
+		pop		esi
+		pop		ebx
+	done:
+		retn
+	}
+}
 
 // 14
 template <typename T_Data>

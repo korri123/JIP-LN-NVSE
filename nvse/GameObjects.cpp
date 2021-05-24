@@ -43,6 +43,7 @@ bool TESObjectREFR::IsMapMarker()
 	return baseForm->refID == 0x10;
 }
 
+void __fastcall HidePointLights(NiNode *objNode);
 extern ModelLoader *g_modelLoader;
 
 __declspec(naked) void TESObjectREFR::Update3D()
@@ -52,12 +53,18 @@ __declspec(naked) void TESObjectREFR::Update3D()
 		mov		eax, [ecx+0x64]
 		test	eax, eax
 		jz		done
-		cmp		dword ptr [eax+0x14], 0
+		mov		eax, [eax+0x14]
+		test	eax, eax
 		jz		done
 		cmp		dword ptr [ecx+0xC], 0x14
 		jz		isPlayer
-		or		byte ptr [ecx+0xB], 8
 		push	ecx
+		test	byte ptr [eax+0x33], 0x20
+		jz		noLights
+		mov		ecx, eax
+		call	HidePointLights
+		mov		ecx, [esp]
+	noLights:
 		push	1
 		push	0
 		CALL_EAX(0x5702E0)
@@ -66,8 +73,8 @@ __declspec(naked) void TESObjectREFR::Update3D()
 	isPlayer:
 		test	byte ptr [ecx+0x61], 1
 		jnz		done
-		or		byte ptr [ecx+0x61], 1
 	doQueue:
+		or		byte ptr [ecx+0x61], 1
 		push	0
 		push	1
 		push	ecx

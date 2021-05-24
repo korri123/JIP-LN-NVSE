@@ -1,6 +1,6 @@
 #pragma once
 
-DEFINE_COMMAND_PLUGIN(RefToString, , 0, 1, kParams_JIP_OptionalForm);
+DEFINE_COMMAND_PLUGIN(RefToString, , 0, 1, kParams_OneOptionalForm);
 DEFINE_COMMAND_PLUGIN(StringToRef, , 0, 1, kParams_OneString);
 DEFINE_COMMAND_PLUGIN(GetMinOf, , 0, 5, kParams_JIP_TwoDoubles_ThreeOptionalDoubles);
 DEFINE_COMMAND_PLUGIN(GetMaxOf, , 0, 5, kParams_JIP_TwoDoubles_ThreeOptionalDoubles);
@@ -20,19 +20,15 @@ DEFINE_COMMAND_PLUGIN(GetIsLAA, , 0, 0, NULL);
 DEFINE_COMMAND_PLUGIN(Sleep, , 0, 1, kParams_OneInt);
 DEFINE_COMMAND_PLUGIN(GetArrayValue, , 0, 2, kParams_TwoInts);
 DEFINE_COMMAND_PLUGIN(GetRandomInRange, , 0, 2, kParams_TwoInts);
+DEFINE_COMMAND_PLUGIN(GetSessionTime, , 0, 0, NULL);
 
 bool Cmd_RefToString_Execute(COMMAND_ARGS)
 {
 	TESForm *form = NULL;
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &form))
-	{
-		if (form)
-		{
-			if (form->GetIsReference())
-				form = ((TESObjectREFR*)form)->baseForm;
-		}
-		else form = thisObj;
-	}
+	if (!NUM_ARGS)
+		form = thisObj;
+	else if (ExtractArgsEx(EXTRACT_ARGS_EX, &form) && IS_REFERENCE(form))
+		form = ((TESObjectREFR*)form)->baseForm;
 	AssignString(PASS_COMMAND_ARGS, form ? form->RefToString() : NULL);
 	return true;
 }
@@ -40,8 +36,9 @@ bool Cmd_RefToString_Execute(COMMAND_ARGS)
 bool Cmd_StringToRef_Execute(COMMAND_ARGS)
 {
 	*result = 0;
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &s_strArgBuffer))
-		REFR_RES = StringToRef(s_strArgBuffer);
+	char refStr[0x80];
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &refStr))
+		REFR_RES = StringToRef(refStr);
 	return true;
 }
 
@@ -96,11 +93,11 @@ bool Cmd_ReadArrayFromFile_Execute(COMMAND_ARGS)
 		return true;
 	ReplaceChr(s_strArgBuffer, '/', '\\');
 	LineIterator lineIter(s_strArgBuffer, s_strValBuffer);
-	if (lineIter.End()) return true;
+	if (!lineIter) return true;
 	NVSEArrayVar *mainArr = CreateArray(NULL, 0, scriptObj);
 	char *dataPtr = lineIter.Get(), *pos;
-	lineIter.Next();
-	if (lineIter.End())
+	++lineIter;
+	if (!lineIter)
 	{
 		do
 		{
@@ -128,7 +125,7 @@ bool Cmd_ReadArrayFromFile_Execute(COMMAND_ARGS)
 		do
 		{
 			dataPtr = lineIter.Get();
-			lineIter.Next();
+			++lineIter;
 			for (UInt32 column = 0; column < numColumns; column++)
 			{
 				if (*dataPtr) pos = GetNextToken(dataPtr, '\t');
@@ -136,7 +133,7 @@ bool Cmd_ReadArrayFromFile_Execute(COMMAND_ARGS)
 				dataPtr = pos;
 			}
 		}
-		while (!lineIter.End());
+		while (lineIter);
 	}
 	if (GetArraySize(mainArr)) AssignCommandResult(mainArr, result);
 	return true;
@@ -218,8 +215,8 @@ bool Cmd_ReadStringFromFile_Execute(COMMAND_ARGS)
 	if (ExtractArgsEx(EXTRACT_ARGS_EX, &s_strArgBuffer, &startAt, &lineCount))
 	{
 		ReplaceChr(s_strArgBuffer, '/', '\\');
-		FileStream sourceFile;
-		if (sourceFile.Open(s_strArgBuffer))
+		FileStream sourceFile(s_strArgBuffer);
+		if (sourceFile)
 		{
 			if (startAt) startAt--;
 			char data;
@@ -372,10 +369,11 @@ bool Cmd_ModLogPrint_Execute(COMMAND_ARGS)
 
 bool Cmd_GetOptionalPatch_Execute(COMMAND_ARGS)
 {
+	char patchName[0x40];
 	bool enabled = false;
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &s_strArgBuffer))
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &patchName))
 	{
-		switch (s_optionalHacks.Get(s_strArgBuffer))
+		switch (s_optionalHacks.Get(patchName))
 		{
 			case 1:
 				enabled = HOOK_INSTALLED(CalculateHitDamage);
@@ -403,9 +401,6 @@ bool Cmd_GetOptionalPatch_Execute(COMMAND_ARGS)
 				break;
 			case 9:
 				enabled = HOOK_INSTALLED(QttSelectInventory);
-				break;
-			case 10:
-				enabled = HOOK_INSTALLED(RefreshHPBarDelay);
 				break;
 			case 11:
 				enabled = HOOK_INSTALLED(DamageToWeapon);
@@ -437,9 +432,10 @@ bool Cmd_GetOptionalPatch_Execute(COMMAND_ARGS)
 
 bool Cmd_SetOptionalPatch_Execute(COMMAND_ARGS)
 {
+	char patchName[0x40];
 	UInt32 enable;
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &s_strArgBuffer, &enable))
-		SetOptionalPatch(s_optionalHacks.Get(s_strArgBuffer), enable != 0);
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &patchName, &enable))
+		SetOptionalPatch(s_optionalHacks.Get(patchName), enable != 0);
 	return true;
 }
 
@@ -448,8 +444,8 @@ bool Cmd_GetPluginHeaderVersion_Execute(COMMAND_ARGS)
 	*result = 0;
 	if (ExtractArgsEx(EXTRACT_ARGS_EX, s_dataPath))
 	{
-		FileStream sourceFile;
-		if (sourceFile.OpenAt(s_dataPathFull, 0x1E))
+		FileStream sourceFile(s_dataPathFull, 0x1E);
+		if (sourceFile)
 		{
 			float version;
 			sourceFile.ReadBuf(&version, 4);
@@ -510,5 +506,11 @@ bool Cmd_GetRandomInRange_Execute(COMMAND_ARGS)
 	if (ExtractArgsEx(EXTRACT_ARGS_EX, &minVal, &maxVal))
 		*result = GetRandomIntInRange(minVal, maxVal);
 	else *result = 0;
+	return true;
+}
+
+bool Cmd_GetSessionTime_Execute(COMMAND_ARGS)
+{
+	*result = int(CdeclCall<UInt32>(0x457FE0) - s_initialTickCount) / 1000.0;
 	return true;
 }

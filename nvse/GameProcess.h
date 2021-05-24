@@ -206,7 +206,7 @@ public:
 	virtual void	Unk_5B(void);
 	virtual void	HandleQueuedEquipItems(Actor *actor);
 	virtual void	Unk_5D(void);	// Called by 5E with count itemExtraList item
-	virtual void	QueueEquipItem(Actor *actor, bool doEquip, TESForm *item, UInt32 count, ExtraDataList *xDataList, bool applyEnchantment, bool noUnequip, UInt8 arg8, UInt8 arg9, bool playSound);	// EquipItem and UnEquipItem doEquip item count itemExtraList bytes = [equipArgC lockUnequip unk unEquipArcC lockEquip arg14 ] (arg as from Actor::(Un)EquipItem)
+	virtual void	QueueEquipItem(Actor *actor, bool doEquip, TESForm *item, UInt32 count, ExtraDataList *xDataList, bool applyEnchantment, bool noUnequip, UInt8 arg8, UInt8 arg9, bool playSound);
 	virtual void	Unk_5F(void);
 	virtual void	Unk_60(void);
 	virtual NiNode	*GetProjectileNode();
@@ -922,8 +922,12 @@ public:
 	UInt8								byte18B;			// 18B
 	UInt8								byte18C;			// 18C
 	UInt8								byte18D[3];			// 18D
-	UInt32								unk190[10];			// 190
-	void								*unk1B8;			// 1B8
+	UInt32								unk190[4];			// 190
+	void								*ptr1A0;			// 1A0
+	UInt32								unk1A4[2];			// 1A4
+	tList<void>							*list1AC;			// 1AC
+	tList<void>							list1B0;			// 1B0
+	tList<void>							*list1B8;			// 1B8
 	MagicTarget							*magicTarget1BC;	// 1BC
 	AnimData							*animData;			// 1C0
 	BSAnimGroupSequence					*animSequence[3];	// 1C4
@@ -931,7 +935,7 @@ public:
 	NiNode								*limbNodes[15];		// 1DC
 	NiNode								*unk218;			// 218
 	NiNode								*unk21C;			// 21C
-	void								*ptr220;			// 220
+	BSShaderProperty					*shaderProp220;		// 220
 	BSBound								*boundingBox;		// 224
 	bool								isAiming;			// 228
 	UInt8								pad229[3];			// 229

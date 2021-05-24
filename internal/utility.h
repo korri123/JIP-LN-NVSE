@@ -39,20 +39,23 @@
 #define GameHeapAlloc(size) ThisCall<void*, UInt32>(0xAA3E40, (void*)0x11F6238, size)
 #define GameHeapFree(ptr) ThisCall<void, void*>(0xAA4060, (void*)0x11F6238, ptr)
 
-#define GetRandomUInt(n) ThisCall<UInt32, UInt32>(0xAA5230, (void*)0x11C4180, n)
-#define GetRandomIntInRange(iMin, iMax) ThisCall<SInt32, SInt32>(0xAA5230, (void*)0x11C4180, iMax - iMin) + iMin
+#define GetRandomInt(n) ThisCall<SInt32, SInt32>(0xAA5230, (void*)0x11C4180, n)
+#define GetRandomIntInRange(iMin, iMax) (GetRandomInt(iMax - iMin) + iMin)
 
 #define LOG_HOOKS 0
 
 static const double
 kDblPId180 = 0.017453292519943295,
-kDblPId2 = 1.5707963267948966;
+kDblPId2 = 1.57079632679489662,
+kDbl180dPI = 57.29577951308232088;
 
 static const float
+kFlt1d100 = 0.01F,
 kFltPId180 = 0.01745329238F,
 kFltHalf = 0.5F,
 kFltOne = 1.0F,
 kFlt10 = 10.0F,
+kFlt180dPI = 57.2957795F,
 kFlt100 = 100.0F,
 kFlt200 = 200.0F,
 kFlt1000 = 1000.0F,
@@ -80,8 +83,8 @@ public:
 
 	T& operator()() {return *(T*)&objData;}
 
-	TempObject& operator=(const T &rhs) {objData = *(Buffer*)&rhs;}
-	TempObject& operator=(const TempObject &rhs) {objData = rhs.objData;}
+	TempObject& operator=(const T &rhs) {objData = *(Buffer*)&rhs; return *this;}
+	TempObject& operator=(const TempObject &rhs) {objData = rhs.objData; return *this;}
 };
 
 //	Assign rhs to lhs, bypassing operator=
@@ -234,6 +237,8 @@ void __fastcall StrToUpper(char *str);
 
 void __fastcall ReplaceChr(char *str, char from, char to);
 
+char* __fastcall FindChr(const char *str, char chr);
+
 char* __fastcall FindChrR(const char *str, UInt32 length, char chr);
 
 char* __fastcall SubStrCI(const char *srcStr, const char *subStr);
@@ -351,8 +356,9 @@ public:
 	const char *CString() const {return str ? str : "";}
 	char *Data() {return str;}
 
-	UInt16 Size() const {return length;}
+	UInt32 Size() const {return length;}
 	bool Empty() const {return !length;}
+	UInt32 AllocSize() const {return alloc;}
 
 	void Reserve(UInt16 size);
 
@@ -421,12 +427,13 @@ class FileStream
 
 public:
 	FileStream() : theFile(NULL) {}
+	FileStream(const char *filePath);
+	FileStream(const char *filePath, UInt32 inOffset);
 	~FileStream() {if (theFile) fclose(theFile);}
 
 	bool Open(const char *filePath);
 	bool OpenAt(const char *filePath, UInt32 inOffset);
 	bool OpenWrite(char *filePath, bool append);
-	bool Create(const char *filePath);
 	void SetOffset(UInt32 inOffset);
 
 	void Close()
@@ -434,6 +441,8 @@ public:
 		fclose(theFile);
 		theFile = NULL;
 	}
+
+	explicit operator bool() const {return theFile != NULL;}
 
 	UInt32 GetLength();
 	char ReadChar();
@@ -476,8 +485,9 @@ class LineIterator
 public:
 	LineIterator(const char *filePath, char *buffer);
 
-	bool End() const {return *dataPtr == 3;}
-	void Next();
+	explicit operator bool() const {return *dataPtr != 3;}
+	void operator++();
+
 	char *Get() {return dataPtr;}
 };
 
@@ -490,8 +500,6 @@ public:
 	DirectoryIterator(const char *path) : handle(FindFirstFile(path, &fndData)) {}
 	~DirectoryIterator() {Close();}
 
-	bool End() const {return handle == INVALID_HANDLE_VALUE;}
-	void Next() {if (!FindNextFile(handle, &fndData)) Close();}
 	bool IsFile() const {return !(fndData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);}
 	bool IsFolder() const
 	{
@@ -512,6 +520,9 @@ public:
 			handle = INVALID_HANDLE_VALUE;
 		}
 	}
+
+	explicit operator bool() const {return handle != INVALID_HANDLE_VALUE;}
+	void operator++() {if (!FindNextFile(handle, &fndData)) Close();}
 };
 
 bool __fastcall FileToBuffer(const char *filePath, char *buffer);
@@ -524,6 +535,8 @@ void __stdcall SafeWrite8(UInt32 addr, UInt32 data);
 void __stdcall SafeWrite16(UInt32 addr, UInt32 data);
 void __stdcall SafeWrite32(UInt32 addr, UInt32 data);
 void __stdcall SafeWriteBuf(UInt32 addr, void * data, UInt32 len);
+
+#define SAFE_WRITE_BUF(addr, data) SafeWriteBuf(addr, data, sizeof(data) - 1)
 
 // 5 bytes
 void __stdcall WriteRelJump(UInt32 jumpSrc, UInt32 jumpTgt);

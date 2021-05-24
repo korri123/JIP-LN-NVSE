@@ -141,10 +141,6 @@ bool Cmd_GetItemRefCurrentHealth_Execute(COMMAND_ARGS)
 {
 	*result = 0;
 	InventoryRef *invRef = InventoryRefGetForID(thisObj->refID);
-	TESForm *item = invRef ? invRef->type : thisObj->baseForm;
-	if (!item) return true;
-	TESHealthForm *healthForm = DYNAMIC_CAST(item, TESForm, TESHealthForm);
-	if (!healthForm) return true;
 	ExtraDataList *xData = invRef ? invRef->xData : &thisObj->extraDataList;
 	if (xData)
 	{
@@ -155,7 +151,14 @@ bool Cmd_GetItemRefCurrentHealth_Execute(COMMAND_ARGS)
 			return true;
 		}
 	}
-	*result = (int)healthForm->health;
+	TESForm *item = invRef ? invRef->type : thisObj->baseForm;
+	if (item)
+	{
+		if IS_ID(item, TESObjectARMO)
+			*result = (int)((TESObjectARMO*)item)->health.health;
+		else if IS_ID(item, TESObjectWEAP)
+			*result = (int)((TESObjectWEAP*)item)->health.health;
+	}
 	return true;
 }
 
@@ -166,14 +169,12 @@ bool Cmd_SetItemRefCurrentHealth_Execute(COMMAND_ARGS)
 	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &health)) return true;
 	InventoryRef *invRef = InventoryRefGetForID(thisObj->refID);
 	if (!invRef) return true;
-	TESHealthForm *healthForm = DYNAMIC_CAST(invRef->type, TESForm, TESHealthForm);
-	if (!healthForm) return true;
-	float maxHealth = (int)healthForm->health;
+	float baseHealth = invRef->entry->GetBaseHealth();
+	if (baseHealth == 0) return true;
+	if (health > baseHealth) health = baseHealth;
 	ExtraDataList *xData = invRef->xData;
 	if (xData)
 	{
-		maxHealth += GetModBonuses(invRef, 10);
-		if (health > maxHealth) health = maxHealth;
 		ExtraHealth *xHealth = GetExtraType(xData, Health);
 		if (xHealth) xHealth->health = health;
 		else AddExtraData(xData, ExtraHealth::Create(health));
@@ -182,7 +183,7 @@ bool Cmd_SetItemRefCurrentHealth_Execute(COMMAND_ARGS)
 	{
 		xData = invRef->CreateExtraData();
 		if (!xData) return true;
-		AddExtraData(xData, ExtraHealth::Create(GetMin(health, maxHealth)));
+		AddExtraData(xData, ExtraHealth::Create(health));
 	}
 	*result = 1;
 	return true;
@@ -234,7 +235,7 @@ bool Cmd_EquipItemAlt_Execute(COMMAND_ARGS)
 {
 	TESForm *item;
 	UInt32 noUnequip = 0, noMessage = 1;
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &item, &noUnequip, &noMessage) && thisObj->IsActor())
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &item, &noUnequip, &noMessage) && IS_ACTOR(thisObj))
 	{
 		ExtraContainerChanges::EntryDataList *entryList = thisObj->GetContainerChangesList();
 		if (entryList)
@@ -247,7 +248,7 @@ bool Cmd_UnequipItemAlt_Execute(COMMAND_ARGS)
 {
 	TESForm *item;
 	UInt32 noEquip = 0, noMessage = 1;
-	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &item, &noEquip, &noMessage) || !thisObj->IsActor() || 
+	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &item, &noEquip, &noMessage) || NOT_ACTOR(thisObj) || 
 		(NOT_ID(item, TESObjectWEAP) && NOT_TYPE(item, TESObjectARMO)))
 		return true;
 	ContChangesEntry *entry = thisObj->GetContainerChangesEntry(item);
@@ -301,8 +302,8 @@ bool Cmd_DropAlt_Execute(COMMAND_ARGS)
 			{
 				subCount = xData->GetCount();
 				if (subCount < 1)
-					continue;
-				if (subCount > 1)
+					subCount = 1;
+				else if (subCount > 1)
 				{
 					if (hasScript && xData->HasType(kExtraData_Script))
 					{
@@ -360,7 +361,7 @@ bool Cmd_GetAllItems_Execute(COMMAND_ARGS)
 		return true;
 	if ((typeID && !kInventoryType[typeID]) || !thisObj->GetInventoryItems(typeID))
 		return true;
-	if (!thisObj->IsActor()) noEquipped = 0;
+	if (NOT_ACTOR(thisObj)) noEquipped = 0;
 	TESForm *item;
 	if (listForm) listForm->RemoveAll();
 	else s_tempElements.Clear();
@@ -391,7 +392,7 @@ bool Cmd_GetAllItemRefs_Execute(COMMAND_ARGS)
 		return true;
 	if ((typeID && !kInventoryType[typeID]) || !thisObj->GetInventoryItems(typeID))
 		return true;
-	if (!thisObj->IsActor()) noEquipped = 0;
+	if (NOT_ACTOR(thisObj)) noEquipped = 0;
 	TESForm *item;
 	SInt32 baseCount, xCount;
 	ContChangesEntry *entry;
@@ -467,7 +468,7 @@ bool Cmd_GetEquippedItemRef_Execute(COMMAND_ARGS)
 {
 	*result = 0;
 	UInt32 slotIdx;
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &slotIdx) && (slotIdx <= 19) && thisObj->IsActor())
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &slotIdx) && (slotIdx <= 19) && IS_ACTOR(thisObj))
 	{
 		TESObjectREFR *invRef = GetEquippedItemRef((Actor*)thisObj, slotIdx);
 		if (invRef) REFR_RES = invRef->refID;
@@ -503,7 +504,7 @@ bool Cmd_SetNoUnequip_Execute(COMMAND_ARGS)
 bool Cmd_GetEquippedWeaponPoison_Execute(COMMAND_ARGS)
 {
 	*result = 0;
-	if (thisObj->IsActor())
+	if (IS_ACTOR(thisObj))
 	{
 		ContChangesEntry *wpnInfo = ((Actor*)thisObj)->GetWeaponInfo();
 		if (wpnInfo && wpnInfo->extendData)
@@ -616,7 +617,7 @@ bool Cmd_SetOnUseAidItemEventHandler_Execute(COMMAND_ARGS)
 bool Cmd_GetEquippedArmorRefs_Execute(COMMAND_ARGS)
 {
 	*result = 0;
-	if (thisObj->IsActor())
+	if (IS_ACTOR(thisObj))
 	{
 		ValidBip01Names *equipment = ((Actor*)thisObj)->GetValidBip01Names();
 		if (equipment)
@@ -624,8 +625,8 @@ bool Cmd_GetEquippedArmorRefs_Execute(COMMAND_ARGS)
 			ExtraContainerChanges::EntryDataList *entryList = thisObj->GetContainerChangesList();
 			if (entryList)
 			{
-				s_tempElements.Clear();
 				s_tempFormList.Clear();
+				s_tempElements.Clear();
 				ValidBip01Names::Data *slotData = equipment->slotData;
 				TESForm *item;
 				ContChangesEntry *entry;

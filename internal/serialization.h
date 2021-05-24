@@ -117,13 +117,24 @@ void DoLoadGameCleanup()
 	}
 
 	for (auto lgtIter = s_activePtLights.Begin(); lgtIter; ++lgtIter)
-		if (lgtIter->isAttached && lgtIter->m_parent)
+		if ((lgtIter->extraFlags & 0x80) && lgtIter->m_parent)
 			lgtIter->m_parent->RemoveObject(*lgtIter);
 
 	if (!s_swapObjLODMap.Empty())
 	{
 		s_swapObjLODMap.Clear();
 		HOOK_SET(MakeObjLODPath, false);
+	}
+
+	if (!s_extraCamerasMap.Empty())
+	{
+		for (auto camIter = s_extraCamerasMap.Begin(); camIter; ++camIter)
+		{
+			if (camIter->m_parent)
+				camIter->m_parent->RemoveObject(*camIter);
+			camIter->Destructor(true);
+		}
+		s_extraCamerasMap.Clear();
 	}
 }
 
@@ -154,11 +165,12 @@ void LoadGameCallback(void*)
 	UInt8 changedFlags = s_dataChangedFlags;
 	DoLoadGameCleanup();
 
-	UInt32 type, version, length, buffer4, refID;
+	UInt32 type, length, buffer4, refID, skipSize;
 	UInt8 buffer1, modIdx;
 	UInt16 nRecs, nRefs, nVars;
+	char varName[0x50];
 
-	while (GetNextRecordInfo(&type, &version, &length))
+	while (GetNextRecordInfo(&type, &s_serializedVersion, &length))
 	{
 		switch (type)
 		{
@@ -181,11 +193,11 @@ void LoadGameCallback(void*)
 						nVars--;
 						modIdx = ReadRecord8();
 						buffer1 = ReadRecord8();
-						ReadRecordData(s_strArgBuffer, buffer1);
-						s_strArgBuffer[buffer1] = 0;
+						ReadRecordData(varName, buffer1);
+						varName[buffer1] = 0;
 						ReadRecord64(&varData);
 						if (!ResolveRefID(modIdx << 24, &buffer4)) continue;
-						if (var = script->AddVariable(eventList, refID, buffer4 >> 24))
+						if (var = script->AddVariable(varName, eventList, refID, buffer4 >> 24))
 						{
 							if (varData.refID && !varData.pad && !ResolveRefID(varData.refID, &varData.refID))
 								varData.refID = 0;
@@ -202,6 +214,7 @@ void LoadGameCallback(void*)
 				AuxVarVarsMap *aVarsMap;
 				AuxVarValsArr *valsArr;
 				UInt16 nElems;
+				skipSize = (s_serializedVersion < 10) ? 4 : 8;
 				nRecs = ReadRecord16();
 				while (nRecs)
 				{
@@ -225,20 +238,22 @@ void LoadGameCallback(void*)
 						{
 							valsArr = NULL;
 							buffer1 = ReadRecord8();
-							ReadRecordData(s_strArgBuffer, buffer1);
-							s_strArgBuffer[buffer1] = 0;
+							ReadRecordData(varName, buffer1);
+							varName[buffer1] = 0;
 							nElems = ReadRecord16();
 							while (nElems)
 							{
 								buffer1 = ReadRecord8();
 								if (aVarsMap)
 								{
-									if (!valsArr) valsArr = aVarsMap->Emplace(s_strArgBuffer, nElems);
+									if (!valsArr) valsArr = aVarsMap->Emplace(varName, nElems);
 									valsArr->Append(buffer1);
 								}
-								else if (buffer1 == 4)
-									SkipNBytes(ReadRecord16());
-								else SkipNBytes(4);
+								else if (buffer1 == 1)
+									SkipNBytes(skipSize);
+								else if (buffer1 == 2)
+									SkipNBytes(4);
+								else SkipNBytes(ReadRecord16());
 								nElems--;
 							}
 							nVars--;
@@ -253,6 +268,7 @@ void LoadGameCallback(void*)
 				if (!(changedFlags & kChangedFlag_RefMaps)) continue;
 				RefMapVarsMap *rVarsMap;
 				RefMapIDsMap *idsMap;
+				skipSize = (s_serializedVersion < 10) ? 4 : 8;
 				nRecs = ReadRecord16();
 				while (nRecs)
 				{
@@ -266,8 +282,8 @@ void LoadGameCallback(void*)
 					{
 						idsMap = NULL;
 						buffer1 = ReadRecord8();
-						ReadRecordData(s_strArgBuffer, buffer1);
-						s_strArgBuffer[buffer1] = 0;
+						ReadRecordData(varName, buffer1);
+						varName[buffer1] = 0;
 						nRefs = ReadRecord16();
 						while (nRefs)
 						{
@@ -278,13 +294,15 @@ void LoadGameCallback(void*)
 								if (!idsMap)
 								{
 									if (!rVarsMap) rVarsMap = s_refMapArraysPerm.Emplace(modIdx, nVars);
-									idsMap = rVarsMap->Emplace(s_strArgBuffer, nRefs);
+									idsMap = rVarsMap->Emplace(varName, nRefs);
 								}
 								idsMap->Emplace(refID, buffer1);
 							}
-							else if (buffer1 == 4)
-								SkipNBytes(ReadRecord16());
-							else SkipNBytes(4);
+							else if (buffer1 == 1)
+								SkipNBytes(skipSize);
+							else if (buffer1 == 2)
+								SkipNBytes(4);
+							else SkipNBytes(ReadRecord16());
 							nRefs--;
 						}
 						nVars--;
@@ -398,7 +416,7 @@ void SaveGameCallback(void*)
 	}
 	if (buffer2 = s_auxVariablesPerm.Size())
 	{
-		WriteRecord('VAPJ', 9, &buffer2, 2);
+		WriteRecord('VAPJ', 10, &buffer2, 2);
 		for (auto avModIt = s_auxVariablesPerm.Begin(); avModIt; ++avModIt)
 		{
 			WriteRecord8(avModIt.Key());
@@ -421,7 +439,7 @@ void SaveGameCallback(void*)
 	}
 	if (buffer2 = s_refMapArraysPerm.Size())
 	{
-		WriteRecord('MRPJ', 9, &buffer2, 2);
+		WriteRecord('MRPJ', 10, &buffer2, 2);
 		for (auto rmModIt = s_refMapArraysPerm.Begin(); rmModIt; ++rmModIt)
 		{
 			WriteRecord8(rmModIt.Key());
@@ -520,8 +538,11 @@ void NVSEMessageHandler(NVSEMessagingInterface::Message *nvseMsg)
 		case NVSEMessagingInterface::kMessage_PreLoadGame:
 			CleanMLCallbacks();
 			s_gameLoadFlagLN = true;
+			HOOK_SET(OnRagdoll, false);
+			s_onRagdollEventScripts.Clear();
 			s_pcCurrCell0 = NULL;
 			s_pcCurrCell = NULL;
+			s_lastInterior = NULL;
 			s_pcRootWorld = NULL;
 			HOOK_SET(SynchronizePosition, false);
 			s_syncPositionRef = NULL;

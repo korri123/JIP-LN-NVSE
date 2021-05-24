@@ -23,8 +23,9 @@ bool Cmd_GetArmorRCT_Execute(COMMAND_ARGS)
 bool Cmd_SetArmorRCT_Execute(COMMAND_ARGS)
 {
 	TESObjectARMO *armor;
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &armor, &s_strArgBuffer) && IS_TYPE(armor, TESObjectARMO))
-		armor->bipedModel.modelRDT.nifPath.Set(s_strArgBuffer);
+	char path[0x80];
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &armor, &path) && IS_TYPE(armor, TESObjectARMO))
+		armor->bipedModel.modelRDT.nifPath.Set(path);
 	return true;
 }
 

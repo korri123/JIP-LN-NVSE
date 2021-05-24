@@ -14,7 +14,7 @@ DEFINE_COMMAND_PLUGIN(SetFormDescription, , 0, 22, kParams_JIP_OneForm_OneFormat
 DEFINE_COMMAND_PLUGIN(GetPCFastTravelled, , 0, 0, NULL);
 DEFINE_COMMAND_PLUGIN(GetPCMovedCell, , 0, 0, NULL);
 DEFINE_CMD_ALT_COND_PLUGIN(GetPCDetectionState, , , 0, NULL);
-DEFINE_COMMAND_PLUGIN(GetPipboyRadio, , 0, 0, NULL);
+DEFINE_CMD_ALT_COND_PLUGIN(GetPipboyRadio, , , 0, NULL);
 DEFINE_CMD_ALT_COND_PLUGIN(GetPCUsingScope, , , 0, NULL);
 DEFINE_COMMAND_PLUGIN(GetIdleLoopTimes, , 0, 2, kParams_OneForm_OneInt);
 DEFINE_COMMAND_PLUGIN(SetIdleLoopTimes, , 0, 3, kParams_JIP_OneForm_TwoInts);
@@ -38,7 +38,7 @@ DEFINE_COMMAND_PLUGIN(GetReticlePos, , 0, 1, kParams_OneOptionalInt);
 DEFINE_COMMAND_PLUGIN(GetReticleRange, , 0, 1, kParams_OneOptionalInt);
 DEFINE_COMMAND_PLUGIN(SetOnDialogTopicEventHandler, , 0, 3, kParams_JIP_OneForm_OneInt_OneForm);
 DEFINE_COMMAND_PLUGIN(GetGameDaysPassed, , 0, 3, kParams_JIP_ThreeOptionalInts);
-DEFINE_COMMAND_PLUGIN(IsPCInCombat, , 0, 0, NULL);
+DEFINE_CMD_ALT_COND_PLUGIN(IsPCInCombat, , , 0, NULL);
 DEFINE_COMMAND_PLUGIN(ToggleHardcoreTracking, , 0, 1, kParams_OneInt);
 DEFINE_COMMAND_PLUGIN(SetGameDifficulty, , 0, 1, kParams_OneInt);
 DEFINE_COMMAND_PLUGIN(GetEnemyHealthTarget, , 0, 0, NULL);
@@ -298,6 +298,12 @@ bool Cmd_GetPipboyRadio_Execute(COMMAND_ARGS)
 	return true;
 }
 
+bool Cmd_GetPipboyRadio_Eval(COMMAND_ARGS_EVAL)
+{
+	*result = (*g_pipboyRadio && ((*g_pipboyRadio)->radioRef == thisObj)) ? 1 : 0;
+	return true;
+}
+
 bool Cmd_GetPCUsingScope_Eval(COMMAND_ARGS_EVAL)
 {
 	*result = g_HUDMainMenu->isUsingScope;
@@ -354,12 +360,13 @@ bool Cmd_GetPCLastExteriorDoor_Execute(COMMAND_ARGS)
 bool Cmd_SwapTextureEx_Execute(COMMAND_ARGS)
 {
 	TESObjectREFR *refr;
+	char blockName[0x40], path[0x80];
 	UInt32 texIdx = 0;
-	char *pathBgn = StrLenCopy(s_strValBuffer, "Textures\\", 9);
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &refr, &s_strArgBuffer, pathBgn, &texIdx))
+	char *pathBgn = StrLenCopy(path, "Textures\\", 9);
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &refr, &blockName, pathBgn, &texIdx))
 	{
 		StrCat(pathBgn, ".dds");
-		refr->SwapTexture(s_strArgBuffer, s_strValBuffer, texIdx);
+		refr->SwapTexture(blockName, path, texIdx);
 	}
 	return true;
 }
@@ -395,8 +402,9 @@ bool Cmd_SetMoonTexture_Execute(COMMAND_ARGS)
 {
 	*result = 0;
 	UInt32 textureID;
-	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &textureID, &s_strArgBuffer) || (textureID > 7) || !*g_currentSky) return true;
-	const char *newTexture = CopyString(s_strArgBuffer);
+	char path[0x80];
+	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &textureID, &path) || (textureID > 7) || !*g_currentSky) return true;
+	const char *newTexture = CopyString(path);
 	for (UInt8 idx = 0; idx < 8; idx++)
 	{
 		if (idx != textureID)
@@ -592,13 +600,19 @@ bool Cmd_GetGameDaysPassed_Execute(COMMAND_ARGS)
 {
 	int bgnYear = 2281, bgnMonth = 10, bgnDay = 13;
 	if (ExtractArgsEx(EXTRACT_ARGS_EX, &bgnYear, &bgnMonth, &bgnDay) && (bgnMonth <= 12))
-		*result = g_gameTimeGlobals->GetDaysPassed(bgnYear, bgnMonth - 1, bgnDay);
+		*result = GetDaysPassed(bgnYear, bgnMonth - 1, bgnDay);
 	else *result = 0;
 	DoConsolePrint(result);
 	return true;
 }
 
 bool Cmd_IsPCInCombat_Execute(COMMAND_ARGS)
+{
+	*result = g_thePlayer->pcInCombat && !g_thePlayer->pcUnseen;
+	return true;
+}
+
+bool Cmd_IsPCInCombat_Eval(COMMAND_ARGS_EVAL)
 {
 	*result = g_thePlayer->pcInCombat && !g_thePlayer->pcUnseen;
 	return true;
@@ -753,7 +767,7 @@ bool Cmd_SetWobblesRotation_Execute(COMMAND_ARGS)
 			for (UInt32 index = 0; index < 9; index++)
 			{
 				if (!g_wobbleAnimations[index]) continue;
-				transData = ((NiTransformController*)g_wobbleAnimations[index]->m_controller)->interpolator->transData;
+				transData = ((NiTransformInterpolator*)((NiTransformController*)g_wobbleAnimations[index]->m_controller)->interpolator)->transData;
 				if ((transData->rotationKeyType == 3) && (transData->numRotationKeys == 3))
 					g_wobbleAnimRotations[index] = (QuaternionKey*)transData->rotationKeys;
 			}
@@ -798,11 +812,10 @@ bool Cmd_SetGameHour_Execute(COMMAND_ARGS)
 	float newHour;
 	if (ExtractArgsEx(EXTRACT_ARGS_EX, &newHour))
 	{
-		float *hour = &g_gameTimeGlobals->hour->data;
-		if (*hour <= newHour)
-			*hour = newHour;
+		if (g_gameHour->data <= newHour)
+			g_gameHour->data = newHour;
 		else if (newHour >= 0)
-			*hour = 24.0 + newHour;
+			g_gameHour->data = 24.0F + newHour;
 	}
 	return true;
 }
@@ -812,7 +825,8 @@ UnorderedMap<const char*, UInt32> s_actorValueIDsMap(0x80);
 bool Cmd_StringToActorValue_Execute(COMMAND_ARGS)
 {
 	*result = -1;
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &s_strArgBuffer))
+	char avStr[0x40];
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &avStr))
 	{
 		if (s_actorValueIDsMap.Empty())
 		{
@@ -823,7 +837,7 @@ bool Cmd_StringToActorValue_Execute(COMMAND_ARGS)
 				s_actorValueIDsMap[avInfo->infoName] = avCode;
 			}
 		}
-		UInt32 *idPtr = s_actorValueIDsMap.GetPtr(s_strArgBuffer);
+		UInt32 *idPtr = s_actorValueIDsMap.GetPtr(avStr);
 		if (idPtr) *result = (int)*idPtr;
 	}
 	return true;
@@ -1147,7 +1161,7 @@ bool Cmd_ClearDeadActors_Execute(COMMAND_ARGS)
 	while (count)
 	{
 		actor = (Actor*)objArray[--count];
-		if (!actor || !actor->IsActor() || (actor->lifeState != 2) || (actor->flags & 0x200000) || (actor->baseForm->flags & 0x400))
+		if (!actor || NOT_ACTOR(actor) || (actor->lifeState != 2) || (actor->flags & 0x200000) || (actor->baseForm->flags & 0x400))
 			continue;
 		hiProcess = (HighProcess*)actor->baseProcess;
 		if (hiProcess && !hiProcess->processLevel && !hiProcess->fadeType && (hiProcess->flt330 < 0) && 
@@ -1176,8 +1190,8 @@ bool Cmd_GetCameraMovement_Execute(COMMAND_ARGS)
 		}
 		else
 		{
-			iMovX = g_inputGlobals->mouseMovementX;
-			iMovY = g_inputGlobals->mouseMovementY;
+			iMovX = g_inputGlobals->currMouseMovementX;
+			iMovY = g_inputGlobals->currMouseMovementY;
 		}
 		if (iMovX || iMovY)
 		{

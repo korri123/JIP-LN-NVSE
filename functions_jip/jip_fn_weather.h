@@ -55,8 +55,9 @@ bool Cmd_SetWeatherTexture_Execute(COMMAND_ARGS)
 {
 	TESWeather *weather;
 	UInt32 layer;
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &weather, &layer, &s_strArgBuffer) && (layer <= 3))
-		weather->layerTextures[layer].ddsPath.Set(s_strArgBuffer);
+	char path[0x80];
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &weather, &layer, &path) && (layer <= 3))
+		weather->layerTextures[layer].ddsPath.Set(path);
 	return true;
 }
 
@@ -74,8 +75,9 @@ bool Cmd_GetWeatherPrecipitationModel_Execute(COMMAND_ARGS)
 bool Cmd_SetWeatherPrecipitationModel_Execute(COMMAND_ARGS)
 {
 	TESWeather *weather;
-	if (ExtractArgsEx(EXTRACT_ARGS_EX, &weather, &s_strArgBuffer))
-		weather->model.SetModelPath(s_strArgBuffer);
+	char path[0x80];
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &weather, &path))
+		weather->model.SetModelPath(path);
 	return true;
 }
 
@@ -218,7 +220,7 @@ bool Cmd_GetWindDirection_Execute(COMMAND_ARGS)
 {
 	if (g_TES->sky)
 	{
-		*result = g_TES->sky->windDirection / -kDblPId180;
+		*result = g_TES->sky->windDirection * -kDbl180dPI;
 		DoConsolePrint(result);
 	}
 	else *result = 0;
@@ -254,7 +256,7 @@ bool Cmd_ResetClouds_Execute(COMMAND_ARGS)
 	__asm
 	{
 		pxor	xmm0, xmm0
-		movdqu	xmmword ptr ds:[0x11FF8B4], xmm0
+		movups	ds:[0x11FF8B4], xmm0
 	}
 	return true;
 }

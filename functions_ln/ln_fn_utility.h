@@ -59,9 +59,10 @@ bool Cmd_ListToArray_Execute(COMMAND_ARGS)
 
 bool Cmd_GetTimeStamp_Execute(COMMAND_ARGS)
 {
-	GetTimeStamp(s_strArgBuffer);
-	if (IsConsoleOpen()) Console_Print(s_strArgBuffer);
-	AssignString(PASS_COMMAND_ARGS, s_strArgBuffer);
+	char buffer[0x20];
+	GetTimeStamp(buffer);
+	if (IsConsoleOpen()) Console_Print(buffer);
+	AssignString(PASS_COMMAND_ARGS, buffer);
 	return true;
 }
 
@@ -74,7 +75,7 @@ bool __fastcall GetINIPath(Script *scriptObj)
 		StrCopy(s_configPath, g_dataHandler->GetNthModName(modIdx));
 	}
 	else ReplaceChr(s_configPath, '/', '\\');
-	char *dotPos = strrchr(s_configPath, '.');
+	char *dotPos = FindChrR(s_configPath, StrLen(s_configPath), '.');
 	if (dotPos) memcpy(dotPos + 1, "ini", 4);
 	else StrCat(s_configPath, ".ini");
 	return true;
@@ -240,7 +241,7 @@ bool Cmd_GetFilesInFolder_Execute(COMMAND_ARGS)
 	if (pathEnd[-1] != '\\') *pathEnd++ = '\\';
 	StrCopy(pathEnd, s_strArgBuffer);
 	NVSEArrayVar *outArray = CreateArray(NULL, 0, scriptObj);
-	for (DirectoryIterator iter(s_dataPathFull); !iter.End(); iter.Next())
+	for (DirectoryIterator iter(s_dataPathFull); iter; ++iter)
 		if (iter.IsFile()) AppendElement(outArray, ArrayElementL(iter.Get()));
 	AssignCommandResult(outArray, result);
 	return true;
@@ -257,7 +258,7 @@ bool Cmd_GetFoldersInFolder_Execute(COMMAND_ARGS)
 	if (pathEnd[-1] != '\\') *pathEnd++ = '\\';
 	StrCopy(pathEnd, s_strArgBuffer);
 	NVSEArrayVar *outArray = CreateArray(NULL, 0, scriptObj);
-	for (DirectoryIterator iter(s_dataPathFull); !iter.End(); iter.Next())
+	for (DirectoryIterator iter(s_dataPathFull); iter; ++iter)
 		if (iter.IsFolder()) AppendElement(outArray, ArrayElementL(iter.Get()));
 	AssignCommandResult(outArray, result);
 	return true;
@@ -293,7 +294,7 @@ bool Cmd_SortFormsByType_Execute(COMMAND_ARGS)
 		for (auto iter = tempForms.BeginRv(); iter; --iter)
 		{
 			form = *iter;
-			if ((form->typeID != typeID) && (!form->GetIsReference() || (((TESObjectREFR*)form)->baseForm->typeID != typeID)))
+			if ((form->typeID != typeID) && (NOT_REFERENCE(form) || (((TESObjectREFR*)form)->baseForm->typeID != typeID)))
 				continue;
 			s_tempElements.Append(form);
 			iter.Remove(tempForms);

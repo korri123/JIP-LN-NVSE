@@ -96,11 +96,6 @@ ParamInfo kParams_JIP_OneFaction_OneOptionalReputation[] =
 	{"Reputation", kParamType_Reputation, 1}
 };
 
-ParamInfo kParams_JIP_OptionalForm[] =
-{
-	{"Form", kParamType_AnyForm, 1}
-};
-
 ParamInfo kParams_JIP_OneAxis_OneOptionalForm[] =
 {
 	{"Axis", kParamType_Axis, 0},
@@ -340,10 +335,10 @@ ParamInfo kParams_JIP_OneString_OneOptionalInt_OneOptionalForm[] =
 	{"Form", kParamType_AnyForm, 1}
 };
 
-ParamInfo kParams_JIP_OneString_OneFloat_OneOptionalInt_OneOptionalForm[] =
+ParamInfo kParams_JIP_OneString_OneDouble_OneOptionalInt_OneOptionalForm[] =
 {
 	{"String", kParamType_String, 0},
-	{"Float", kParamType_Float, 0},
+	{"Double", kParamType_Double, 0},
 	{"Integer", kParamType_Integer, 1},
 	{"Form", kParamType_AnyForm, 1}
 };
@@ -377,10 +372,10 @@ ParamInfo kParams_JIP_OneString_OneInt_OneOptionalForm[] =
 	{"Form", kParamType_AnyForm, 1}
 };
 
-ParamInfo kParams_JIP_OneString_OneFloat_OneOptionalForm[] =
+ParamInfo kParams_JIP_OneString_OneDouble_OneOptionalForm[] =
 {
 	{"String", kParamType_String, 0},
-	{"Float", kParamType_Float, 0},
+	{"Double", kParamType_Double, 0},
 	{"Form", kParamType_AnyForm, 1}
 };
 
@@ -854,12 +849,6 @@ ParamInfo kParams_JIP_OneForm_OneInt_OneOptionalInt[] =
 	{"Form", kParamType_AnyForm, 0},
 	{"Integer", kParamType_Integer, 0},
 	{"Integer", kParamType_Integer, 1}
-};
-
-ParamInfo kParams_JIP_TwoOptionalForms[] =
-{
-	{"Form", kParamType_AnyForm, 1},
-	{"Form", kParamType_AnyForm, 1}
 };
 
 ParamInfo kParams_JIP_TwoForms_OneInt[] =
@@ -1480,5 +1469,35 @@ ParamInfo kParams_JIP_OneOptionalFloat_OneOptionalInt[] =
 ParamInfo kParams_JIP_OneOptionalString_OneOptionalInt[] =
 {
 	{"String", kParamType_String, 1},
+	{"Integer", kParamType_Integer, 1}
+};
+
+ParamInfo kParams_JIP_ThreeScriptVars[] =
+{
+	{"Variable", kParamType_ScriptVariable, 0},
+	{"Variable", kParamType_ScriptVariable, 0},
+	{"Variable", kParamType_ScriptVariable, 0}
+};
+
+ParamInfo kParams_JIP_OneString_TwoInts_OneFloat[] =
+{
+	{"String", kParamType_String, 0},
+	{"Integer", kParamType_Integer, 0},
+	{"Integer", kParamType_Integer, 0},
+	{"Float", kParamType_Float, 0}
+};
+
+ParamInfo kParams_JIP_TwoStrings_OneDouble_OneOptionalInt[] =
+{
+	{"String", kParamType_String, 0},
+	{"String", kParamType_String, 0},
+	{"Double", kParamType_Double, 0},
+	{"Integer", kParamType_Integer, 1}
+};
+
+ParamInfo kParams_JIP_TwoStrings_OneOptionalInt[] =
+{
+	{"String", kParamType_String, 0},
+	{"String", kParamType_String, 0},
 	{"Integer", kParamType_Integer, 1}
 };

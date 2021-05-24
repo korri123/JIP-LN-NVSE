@@ -17,28 +17,35 @@ struct NiPoint2
 
 	NiPoint2() {}
 	NiPoint2(float _x, float _y) : x(_x), y(_y) {}
-	NiPoint2(const NiPoint2 &rhs) {*(double*)this = *(double*)&rhs;}
+	NiPoint2(const NiPoint2 &rhs) {_mm_storeu_si64(this, _mm_loadu_si64(&rhs));}
 
 	inline NiPoint2& operator=(const NiPoint2 &rhs)
 	{
-		*(double*)this = *(double*)&rhs;
+		_mm_storeu_si64(this, _mm_loadu_si64(&rhs));
 		return *this;
 	}
 };
+
+struct NiVector3;
 
 // 24
 struct NiMatrix33
 {
 	float	cr[3][3];
 
-	__forceinline void ExtractAngles(float *rotX, float *rotY, float *rotZ)
+	void __fastcall ExtractAngles(NiVector3 *outAngles);
+	NiMatrix33* __fastcall RotationMatrix(NiVector3 *rot);
+	NiMatrix33 *MultiplyMatrices(NiMatrix33 *matA, NiMatrix33 *matB);
+	void __fastcall Rotate(NiVector3 *rot);
+	void __fastcall Inverse(NiMatrix33 *mat = NULL);
+	
+	inline NiMatrix33& operator=(const NiMatrix33 &rhs)
 	{
-		ThisCall(0xA592C0, this, rotX, rotY, rotZ);
+		_mm_storeu_ps(&cr[0][0], _mm_loadu_ps(&rhs.cr[0][0]));
+		_mm_storeu_ps(&cr[1][1], _mm_loadu_ps(&rhs.cr[1][1]));
+		cr[2][2] = rhs.cr[2][2];
+		return *this;
 	}
-	void RotationMatrix(float rotX, float rotY, float rotZ);
-	void Rotate(float rotX, float rotY, float rotZ);
-	void MultiplyMatrices(NiMatrix33 &matA, NiMatrix33 &matB);
-	void Dump(const char *title = NULL);
 };
 
 struct NiQuaternion;
@@ -68,6 +75,12 @@ struct NiVector3
 		y -= rhs.y;
 		z -= rhs.z;
 	}
+	void operator*=(float value)
+	{
+		x *= value;
+		y *= value;
+		z *= value;
+	}
 
 	void ToQuaternion(NiQuaternion &quaternion);
 	void MultiplyMatrixVector(NiMatrix33 &mat, NiVector3 &vec);
@@ -75,7 +88,6 @@ struct NiVector3
 	bool RayCastCoords(NiVector3 *posVector, NiMatrix33 *rotMatrix, float maxRange, UInt32 axis = 0, UInt16 filter = 6);
 };
 
-// 10 - always aligned?
 struct NiVector4
 {
 	float	x, y, z, w;
@@ -87,6 +99,21 @@ struct NiVector4
 	{
 		return ((float*)&x)[axis];
 	}
+};
+
+struct alignas(16) AlignedVector4
+{
+	float	x, y, z, w;
+
+	AlignedVector4() {}
+	AlignedVector4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
+
+	float& operator[](char axis)
+	{
+		return ((float*)&x)[axis];
+	}
+
+	AlignedVector4& operator=(float *valPtr) {_mm_store_ps(&x, _mm_loadu_ps(valPtr)); return *this;}
 };
 
 // 10 - always aligned?
@@ -116,19 +143,6 @@ struct NiSphere
 	float	x, y, z, radius;
 };
 
-// 1C
-struct NiFrustum
-{
-	float	l;			// 00
-	float	r;			// 04
-	float	t;			// 08
-	float	b;			// 0C
-	float	n;			// 10
-	float	f;			// 14
-	UInt8	o;			// 18
-	UInt8	pad19[3];	// 19
-};
-
 // 10
 struct NiViewport
 {
@@ -136,6 +150,16 @@ struct NiViewport
 	float	r;
 	float	t;
 	float	b;
+};
+
+// 1C
+struct NiFrustum
+{
+	NiViewport	viewPort;	// 00
+	float		n;			// 10
+	float		f;			// 14
+	UInt8		o;			// 18
+	UInt8		pad19[3];	// 19
 };
 
 // C
@@ -207,10 +231,10 @@ struct NiTArray
 		friend NiTArray;
 
 		T_Data		*pData;
-		UInt16		count;
+		UInt32		count;
 
 	public:
-		bool End() const {return !count;}
+		explicit operator bool() const {return count != 0;}
 		void operator++()
 		{
 			pData++;
@@ -270,7 +294,7 @@ public:
 		UInt32		count;
 
 	public:
-		bool End() const {return !count;}
+		explicit operator bool() const {return count != 0;}
 		void operator++()
 		{
 			pData++;
@@ -365,7 +389,7 @@ public:
 	public:
 		Iterator(NiTPointerMap &_table) : table(&_table), bucket(table->m_buckets), entry(NULL) {FindNonEmpty();}
 
-		bool End() const {return !entry;}
+		explicit operator bool() const {return entry != NULL;}
 		void operator++()
 		{
 			entry = entry->next;
@@ -463,7 +487,7 @@ public:
 	public:
 		Iterator(NiTMapBase &_table) : table(&_table), bucket(table->buckets), entry(NULL) {FindNonEmpty();}
 
-		bool End() const {return !entry;}
+		explicit operator bool() const {return entry != NULL;}
 		void operator++()
 		{
 			entry = entry->next;
@@ -488,38 +512,43 @@ __declspec(naked) void NiTMapBase<T_Key, T_Data>::FreeBuckets()
 		cmp		dword ptr [ecx+0xC], 0
 		jz		done
 		push	ebx
+		mov		ebx, ecx
+		mov		ecx, 0x11C5F80
+		call	LightCS::EnterSleep
 		push	esi
 		push	edi
-		mov		ebx, ecx
-		mov		esi, [ecx+8]
-		mov		edi, [ecx+4]
+		mov		esi, [ebx+8]
+		mov		edi, [ebx+4]
+		mov		dword ptr [ebx+0xC], 0
+		mov		ebx, 0x11C5F58
+		pxor	xmm0, xmm0
 		ALIGN 16
 	bucketIter:
 		dec		edi
 		js		bucketEnd
-		mov		eax, [esi]
+		mov		ecx, [esi]
 		add		esi, 4
-		test	eax, eax
+		test	ecx, ecx
 		jz		bucketIter
 		ALIGN 16
 	entryIter:
-		push	dword ptr [eax]
-		push	eax
-		push	eax
-		mov		ecx, ebx
-		mov		eax, [ecx]
-		call	dword ptr [eax+0x10]
-		mov		ecx, ebx
-		mov		eax, [ecx]
-		call	dword ptr [eax+0x18]
-		pop		eax
-		test	eax, eax
+		mov		eax, ecx
+		mov		ecx, [ecx]
+		movq	qword ptr [eax+4], xmm0
+		mov		edx, [ebx]
+		mov		[eax], edx
+		mov		[ebx], eax
+		test	ecx, ecx
 		jnz		entryIter
-		mov		[esi-4], eax
+		mov		[esi-4], ecx
 		jmp		bucketIter
 		ALIGN 16
 	bucketEnd:
-		mov		dword ptr [ebx+0xC], 0
+		mov		ecx, 0x11C5F80
+		dec		dword ptr [ecx+4]
+		jnz		inUse
+		mov		dword ptr [ecx], 0
+	inUse:
 		pop		edi
 		pop		esi
 		pop		ebx

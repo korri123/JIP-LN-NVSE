@@ -766,7 +766,7 @@ bool NVSEPlugin_Load(const NVSEInterface *nvse)
 	/*272B*/REG_CMD(EnableImprovedRecipeMenu);
 	/*272C*/REG_CMD(InitItemFilter);
 	/*272D*/REG_CMD(SetItemFilter);
-	/*272E*/REG_CMD(EmptyCommand);
+	/*272E*/REG_CMD(GetSessionTime);
 	/*272F*/REG_CMD(EmptyCommand);
 	/*2730*/REG_CMD(EmptyCommand);
 	/*2731*/REG_CMD(EmptyCommand);
@@ -1307,8 +1307,21 @@ bool NVSEPlugin_Load(const NVSEInterface *nvse)
 	/*28F4*/REG_CMD_ARR(GetBlockTextureSet);
 	//	v56.08
 	/*28F5*/REG_CMD_STR(GetReticleNode);
-	/*28F6*/REG_CMD_STR(GetBodyPartPartNode);
+	/*28F6*/REG_CMD(EmptyCommand);
 	/*28F7*/REG_CMD(EquippedWeaponHasModType);
+	//	v56.10
+	/*28F8*/REG_CMD(GetPosEx);
+	/*28F9*/REG_CMD(GetAngleEx);
+	//	v56.12
+	/*28FA*/REG_CMD(ToggleMouseMovement);
+	/*28FB*/REG_CMD(SetTextureTransformKey);
+	//	v56.16
+	/*28FC*/REG_CMD(AttachExtraCamera);
+	/*28FD*/REG_CMD(ProjectExtraCamera);
+	/*28FE*/REG_CMD(AttachUIXML);
+	/*28FF*/REG_CMD(AttachUIComponent);
+	//	v56.18
+	/*2900*/REG_CMD(RenameNifBlock);
 
 	//===========================================================
 

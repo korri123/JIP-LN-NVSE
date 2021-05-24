@@ -1,5 +1,7 @@
 #pragma once
 
+struct Sound;
+
 // 68
 class TESObjectREFR : public TESForm
 {
@@ -7,7 +9,7 @@ public:
 	MEMBER_FN_PREFIX(TESObjectREFR);
 
 	virtual void		Unk_4E(void);	// GetStartingPosition(Position, Rotation, WorldOrCell)
-	virtual void		Unk_4F(void);
+	virtual void		SayTopic(Sound *sound, TESTopic *topic, TESObjectREFR *target, UInt8 arg4, UInt8 arg5, UInt8 arg6, UInt8 arg7, UInt8 arg8);
 	virtual void		Unk_50(void);
 	virtual void		Unk_51(void);
 	virtual bool		CastShadows();
@@ -139,7 +141,6 @@ public:
 	TESForm *GetBaseForm();
 	TESForm *GetBaseForm2();
 	bool GetDisabled();
-	ExtraContainerChanges *GetOrCreateContainerChanges();
 	ExtraContainerChanges::EntryDataList *GetContainerChangesList();
 	ContChangesEntry *GetContainerChangesEntry(TESForm *itemForm);
 	SInt32 GetItemCount(TESForm *form);
@@ -157,7 +158,7 @@ public:
 	void DeleteReference();
 	bhkCharacterController *GetCharacterController();
 	TESObjectREFR *GetMerchantContainer();
-	float GetWaterImmersionPerc();
+	double GetWaterImmersionPerc();
 	bool IsMobile();
 	bool IsGrabbable();
 	void SwapTexture(const char *blockName, const char *filePath, UInt32 texIdx);
@@ -492,7 +493,7 @@ public:
 	virtual void		Unk_12A(void);
 	virtual void		Unk_12B(void);
 	virtual void		Unk_12C(void);
-	virtual void		Unk_12D(void);
+	virtual bool		GetIsImmobileCreature();
 	virtual void		DoHealthDamage(Actor *attacker, float damage);
 	virtual void		Unk_12F(void);
 	virtual void		Unk_130(void);
@@ -619,7 +620,7 @@ public:
 	UInt32								unk1A4;						// 1A4-
 	UInt32								unk1A8;						// 1A8-
 	UInt32								sitSleepState;				// 1AC-
-	UInt8								isTurret;					// 1B0-
+	UInt8								isImmobileCreature;			// 1B0-
 	bool								forceHit;					// 1B1-
 	UInt8								byte1B2;					// 1B2
 	UInt8								byte1B3;					// 1B3
@@ -672,7 +673,7 @@ public:
 	void PlayIdle(TESIdleForm *idleAnim);
 	void PlayAnimGroup(UInt32 animGroupID);
 	UInt32 GetLevel();
-	float GetKillXP();
+	double GetKillXP();
 	void DismemberLimb(UInt32 bodyPartID, bool explode);
 	void EquipItemAlt(TESForm *itemForm, ContChangesEntry *entry, UInt32 noUnequip, UInt32 noMessage);
 	bool HasNoPath();
@@ -824,7 +825,8 @@ public:
 	UInt8								byte659;				// 659
 	UInt8								byte65A;				// 65A
 	UInt8								byte65B;				// 65B
-	UInt32								unk65C[4];				// 65C
+	float								flt65C;					// 65C
+	UInt32								unk660[3];				// 660
 	UInt8								byte66C;				// 66C
 	UInt8								byte66D;				// 66D
 	UInt8								byte66E;				// 66E
@@ -865,7 +867,10 @@ public:
 	UInt8								byte75F;				// 75F
 	TESRegion							*currentRegion;			// 760
 	TESRegionList						regionsList;			// 764
-	UInt32								unk774[14];				// 774
+	UInt32								unk774[6];				// 774
+	UInt32								initialTickCount;		// 78C
+	UInt32								timePlayedCurrGame;		// 790	ms
+	UInt32								unk794[6];				// 794
 	TESForm								*pcWorldOrCell;			// 7AC
 	UInt32								unk7B0;					// 7B0
 	BGSMusicType						*musicType;				// 7B4

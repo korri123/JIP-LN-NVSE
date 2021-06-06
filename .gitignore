@@ -396,3 +396,8 @@ ipch
 
 *.tlog
 *.recipe
+_Debug/jip_nvse.dll
+_Debug/jip_nvse.exp
+_Debug/jip_nvse.lib
+_Debug/jip_nvse.res
+_Debug/jip_nvse.vcxproj.FileListAbsolute.txt

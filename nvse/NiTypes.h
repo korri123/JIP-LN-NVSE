@@ -1,7 +1,5 @@
 #pragma once
 
-#include "nvse/Utilities.h"
-
 // 08
 struct NiRTTI
 {
@@ -88,6 +86,8 @@ struct NiVector3
 	bool RayCastCoords(NiVector3 *posVector, NiMatrix33 *rotMatrix, float maxRange, UInt32 axis = 0, UInt16 filter = 6);
 };
 
+float __vectorcall Vector3Distance(NiVector3 *vec1, NiVector3 *vec2);
+
 struct NiVector4
 {
 	float	x, y, z, w;
@@ -116,6 +116,8 @@ struct alignas(16) AlignedVector4
 	AlignedVector4& operator=(float *valPtr) {_mm_store_ps(&x, _mm_loadu_ps(valPtr)); return *this;}
 };
 
+float __vectorcall Vector3Length(AlignedVector4 *inVec);
+
 // 10 - always aligned?
 struct NiQuaternion
 {
@@ -126,7 +128,6 @@ struct NiQuaternion
 
 	void EulerYPR(NiVector3 &ypr);
 	void RotationMatrix(NiMatrix33 &rotMatrix);
-	void Dump();
 };
 
 // 34

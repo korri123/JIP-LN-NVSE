@@ -1,14 +1,5 @@
 #pragma once
 
-enum
-{
-	kChangedFlag_AuxVars =		1 << 0,
-	kChangedFlag_RefMaps =		1 << 1,
-	kChangedFlag_LinkedRefs =	1 << 2,
-
-	kChangedFlag_All =			kChangedFlag_AuxVars | kChangedFlag_RefMaps | kChangedFlag_LinkedRefs,
-};
-
 void DoLoadGameCleanup()
 {
 	if (g_thePlayer->teammateCount)
@@ -30,6 +21,19 @@ void DoLoadGameCleanup()
 	if (s_dataChangedFlags & kChangedFlag_RefMaps) s_refMapArraysPerm.Clear();
 	if (s_dataChangedFlags & kChangedFlag_LinkedRefs) s_linkedRefModified.Clear();
 	s_linkedRefsTemp.Clear();
+
+	UInt32 size = s_NPCPerksInfoMap.Size();
+	if (size && (s_dataChangedFlags & kChangedFlag_NPCPerks))
+	{
+		Actor *actor;
+		for (auto refIter = s_NPCPerksInfoMap.Begin(); refIter; ++refIter)
+		{
+			if ((actor = (Actor*)LookupFormByRefID(refIter.Key())) && IS_ACTOR(actor))
+				actor->extraDataList.perksInfo = NULL;
+			if (!--size) break;
+		}
+		s_NPCPerksInfoMap.Clear();
+	}
 
 	if ((s_dataChangedFlags == kChangedFlag_All) && !s_resolvedGlobals.Empty())
 	{
@@ -93,7 +97,7 @@ void DoLoadGameCleanup()
 	{
 		for (auto waitIter = s_scriptWaitInfoMap.Begin(); waitIter; ++waitIter)
 		{
-			form = LookupFormByRefID(waitIter.Key());
+			form = LookupFormByRefID(waitIter().refID);
 			if (form) form->jipFormFlags5 = 0;
 		}
 		s_scriptWaitInfoMap.Clear();
@@ -176,9 +180,8 @@ void LoadGameCallback(void*)
 	UInt8 changedFlags = s_dataChangedFlags;
 	DoLoadGameCleanup();
 
-	UInt32 type, length, buffer4, refID, skipSize;
+	UInt32 type, length, nRecs, nRefs, nVars, buffer4, refID, skipSize;
 	UInt8 buffer1, modIdx;
-	UInt16 nRecs, nRefs, nVars;
 	UInt8 *bufPos, *namePos;
 
 	while (GetNextRecordInfo(&type, &s_serializedVersion, &length))
@@ -239,7 +242,7 @@ void LoadGameCallback(void*)
 			}
 			case 'VAPJ':
 			{
-				if (!(changedFlags & kChangedFlag_AuxVars)) continue;
+				if (!(changedFlags & kChangedFlag_AuxVars)) break;
 				bufPos = GetLoadGameBuffer(length);
 				AuxVarOwnersMap *ownersMap;
 				AuxVarVarsMap *aVarsMap;
@@ -350,14 +353,14 @@ void LoadGameCallback(void*)
 					}
 				}
 				break;
-auxVarReadError:
+			auxVarReadError:
 				s_auxVariablesPerm.Clear();
 				PrintLog("LOAD GAME: AuxVar map corrupted > Skipping records.");
 				break;
 			}
 			case 'MRPJ':
 			{
-				if (!(changedFlags & kChangedFlag_RefMaps)) continue;
+				if (!(changedFlags & kChangedFlag_RefMaps)) break;
 				bufPos = GetLoadGameBuffer(length);
 				RefMapVarsMap *rVarsMap;
 				RefMapIDsMap *idsMap;
@@ -392,7 +395,7 @@ auxVarReadError:
 								refID = *(UInt32*)bufPos;
 								bufPos += 4;
 								buffer1 = *bufPos++;
-								if (ResolveRefID(refID, &refID))
+								if (ResolveRefID(refID, &refID) && LookupFormByRefID(refID))
 								{
 									if (!idsMap)
 									{
@@ -437,14 +440,14 @@ auxVarReadError:
 					}
 				}
 				break;
-refMapReadError:
+			refMapReadError:
 				s_refMapArraysPerm.Clear();
 				PrintLog("LOAD GAME: RefMap map corrupted > Skipping records.");
 				break;
 			}
 			case 'RLPJ':
 			{
-				if (!(changedFlags & kChangedFlag_LinkedRefs)) continue;
+				if (!(changedFlags & kChangedFlag_LinkedRefs)) break;
 				bufPos = GetLoadGameBuffer(length);
 				UInt32 lnkID;
 				nRecs = *(UInt16*)bufPos;
@@ -502,17 +505,56 @@ refMapReadError:
 				s_appearanceUndoMap[(TESNPC*)g_thePlayer->baseForm] = aprUndo;
 				break;
 			}
+			case 'PNPJ':
+			{
+				if (!s_NPCPerks || !(changedFlags & kChangedFlag_NPCPerks)) break;
+				bufPos = GetLoadGameBuffer(length);
+				nRecs = *(UInt16*)bufPos;
+				bufPos += 2;
+				Actor *actor;
+				NPCPerksInfo *perksInfo;
+				UInt8 rank;
+				BGSPerk *perk;
+				while (nRecs)
+				{
+					nRecs--;
+					refID = *(UInt32*)bufPos;
+					bufPos += 4;
+					buffer1 = *bufPos++;
+					if (!ResolveRefID(refID, &refID) || !(actor = (Actor*)LookupFormByRefID(refID)) || NOT_ACTOR(actor))
+					{
+						bufPos += buffer1 * 5;
+						continue;
+					}
+					perksInfo = NULL;
+					while (buffer1)
+					{
+						buffer1--;
+						buffer4 = *(UInt32*)bufPos;
+						bufPos += 4;
+						rank = *bufPos++;
+						if (!ResolveRefID(buffer4, &buffer4) || !(perk = (BGSPerk*)LookupFormByRefID(buffer4)) || NOT_ID(perk, BGSPerk))
+							continue;
+						if (rank > perk->data.numRanks)
+							rank = perk->data.numRanks;
+						if (!perksInfo)
+							perksInfo = &s_NPCPerksInfoMap[refID];
+						perksInfo->perkRanks[perk] = rank;
+					}
+					actor->extraDataList.perksInfo = perksInfo;
+				}
+			}
 			default:
 				break;
 		}
 	}
 	if (changedFlags & kChangedFlag_LinkedRefs)
 		RestoreLinkedRefs(&s_linkedRefsTemp);
+	Actor *actor;
 	if (s_NPCWeaponMods && !(g_thePlayer->actorFlags & 0x10000000))
 	{
 		g_thePlayer->actorFlags |= 0x10000000;
-		auto actorIter = g_processManager->highActors.Head();
-		Actor *actor;
+		auto actorIter = ProcessManager::Get()->highActors.Head();
 		do
 		{
 			if (!(actor = actorIter->data) || (actor->actorFlags & 0x10000000))
@@ -523,12 +565,23 @@ refMapReadError:
 		}
 		while (actorIter = actorIter->next);
 	}
+	if (s_NPCPerks && (changedFlags & kChangedFlag_NPCPerks))
+	{
+		auto actorIter = ProcessManager::Get()->highActors.Head();
+		do
+		{
+			if (actor = actorIter->data)
+				InitNPCPerks(actor);
+		}
+		while (actorIter = actorIter->next);
+		//PrintLog("\n================\n");
+	}
 }
 
 void SaveGameCallback(void*)
 {
 	UInt8 buffer1;
-	UInt16 buffer2;
+	UInt32 buffer2;
 
 	StrCopy(s_lastLoadedPath, GetSavePath());
 	s_dataChangedFlags = 0;
@@ -626,6 +679,37 @@ void SaveGameCallback(void*)
 			while (--buffer1);
 		}
 	}
+	if (buffer2 = s_NPCPerksInfoMap.Size())
+	{
+		Actor *actor;
+		for (auto refIter = s_NPCPerksInfoMap.Begin(); refIter; ++refIter)
+		{
+			if ((actor = (Actor*)LookupFormByRefID(refIter.Key())) && IS_ACTOR(actor))
+			{
+				if (!refIter().perkRanks.Empty() && !actor->lifeState && (actor->isTeammate || !(((TESActorBase*)actor->baseForm)->baseData.flags & 8) || actor->GetNiNode()))
+					goto isValid;
+				actor->extraDataList.perksInfo = NULL;
+			}
+			refIter.Remove();
+		isValid:
+			if (!--buffer2) break;
+		}
+		if (buffer2 = s_NPCPerksInfoMap.Size())
+		{
+			WriteRecord('PNPJ', 10, &buffer2, 2);
+			for (auto refIter = s_NPCPerksInfoMap.Begin(); refIter; ++refIter)
+			{
+				WriteRecord32(refIter.Key());
+				WriteRecord8(refIter().perkRanks.Size());
+				for (auto perkIter = refIter().perkRanks.Begin(); perkIter; ++perkIter)
+				{
+					WriteRecord32(perkIter.Key()->refID);
+					WriteRecord8(perkIter());
+				}
+				if (!--buffer2) break;
+			}
+		}
+	}
 }
 
 void NewGameCallback(void*)
@@ -634,72 +718,4 @@ void NewGameCallback(void*)
 	DoLoadGameCleanup();
 	RestoreLinkedRefs();
 	s_lastLoadedPath[0] = 0;
-}
-
-void CleanMLCallbacks()
-{
-	for (auto iter = s_mainLoopCallbacks.Begin(); iter; ++iter)
-		if (iter->flags & 8) iter->bRemove = true;
-}
-
-void NVSEMessageHandler(NVSEMessagingInterface::Message *nvseMsg)
-{
-	switch (nvseMsg->type)
-	{
-		case NVSEMessagingInterface::kMessage_PostLoad:
-			MemCopy = memcpy;
-			MemMove = memmove;
-
-			InitJIPHooks();
-			InitLNHooks();
-			InitGamePatches();
-			InitCmdPatches();
-			MainLoopAddCallback(DeferredInit);
-			break;
-		case NVSEMessagingInterface::kMessage_ExitGame:
-			JIPScriptRunner::RunScriptFiles('xg');
-			break;
-		case NVSEMessagingInterface::kMessage_ExitToMainMenu:
-			CleanMLCallbacks();
-			JIPScriptRunner::RunScriptFiles('mx');
-			break;
-		case NVSEMessagingInterface::kMessage_LoadGame:
-			JIPScriptRunner::RunScriptFiles('lg');
-			break;
-		case NVSEMessagingInterface::kMessage_SaveGame:
-			JIPScriptRunner::RunScriptFiles('sg');
-			break;
-		case NVSEMessagingInterface::kMessage_Precompile:
-			break;
-		case NVSEMessagingInterface::kMessage_PreLoadGame:
-			CleanMLCallbacks();
-			s_gameLoadFlagLN = true;
-			HOOK_SET(OnRagdoll, false);
-			s_onRagdollEventScripts.Clear();
-			s_pcCurrCell0 = NULL;
-			s_pcCurrCell = NULL;
-			s_lastInterior = NULL;
-			s_pcRootWorld = NULL;
-			HOOK_SET(SynchronizePosition, false);
-			s_syncPositionRef = NULL;
-			break;
-		case NVSEMessagingInterface::kMessage_ExitGame_Console:
-			JIPScriptRunner::RunScriptFiles('xg');
-			break;
-		case NVSEMessagingInterface::kMessage_PostLoadGame:
-			break;
-		case NVSEMessagingInterface::kMessage_PostPostLoad:
-			break;
-		case NVSEMessagingInterface::kMessage_RuntimeScriptError:
-			break;
-		case NVSEMessagingInterface::kMessage_DeleteGame:
-			break;
-		case NVSEMessagingInterface::kMessage_RenameGame:
-			break;
-		case NVSEMessagingInterface::kMessage_RenameNewGame:
-			break;
-		case NVSEMessagingInterface::kMessage_NewGame:
-			JIPScriptRunner::RunScriptFiles('ng');
-			break;
-	}
 }

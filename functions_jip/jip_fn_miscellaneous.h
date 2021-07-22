@@ -229,7 +229,7 @@ bool Cmd_SetFormDescription_Execute(COMMAND_ARGS)
 	}
 	else *findDesc = newDesc = (char*)GameHeapAlloc(newLen + 1);
 	StrCopy(newDesc, buffer);
-	*g_currentDescription = NULL;
+	*GameGlobals::CurrentDescription() = NULL;
 	HOOK_SET(GetDescription, true);
 	*result = 1;
 	return true;
@@ -295,14 +295,16 @@ bool Cmd_GetPCDetectionState_Execute(COMMAND_ARGS)
 
 bool Cmd_GetPipboyRadio_Execute(COMMAND_ARGS)
 {
-	if (*g_pipboyRadio && (*g_pipboyRadio)->radioRef) REFR_RES = (*g_pipboyRadio)->radioRef->refID;
+	RadioEntry *pipboyRadio = GameGlobals::PipboyRadio();
+	if (pipboyRadio && pipboyRadio->radioRef) REFR_RES = pipboyRadio->radioRef->refID;
 	else *result = 0;
 	return true;
 }
 
 bool Cmd_GetPipboyRadio_Eval(COMMAND_ARGS_EVAL)
 {
-	*result = (*g_pipboyRadio && ((*g_pipboyRadio)->radioRef == thisObj)) ? 1 : 0;
+	RadioEntry *pipboyRadio = GameGlobals::PipboyRadio();
+	*result = (pipboyRadio && (pipboyRadio->radioRef == thisObj)) ? 1 : 0;
 	return true;
 }
 
@@ -392,7 +394,7 @@ bool Cmd_GetMoonTexture_Execute(COMMAND_ARGS)
 {
 	UInt32 textureID;
 	const char *texturePath;
-	Sky *currSky = *g_currentSky;
+	Sky *currSky = Sky::Get();
 	if (ExtractArgsEx(EXTRACT_ARGS_EX, &textureID) && (textureID <= 7) && currSky && currSky->masserMoon)
 		texturePath = currSky->masserMoon->moonTexture[textureID].m_data;
 	else texturePath = NULL;
@@ -405,7 +407,8 @@ bool Cmd_SetMoonTexture_Execute(COMMAND_ARGS)
 	*result = 0;
 	UInt32 textureID;
 	char path[0x80];
-	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &textureID, &path) || (textureID > 7) || !*g_currentSky) return true;
+	Sky *currSky = Sky::Get();
+	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &textureID, &path) || (textureID > 7) || !currSky) return true;
 	const char *newTexture = CopyString(path);
 	for (UInt8 idx = 0; idx < 8; idx++)
 	{
@@ -419,7 +422,7 @@ bool Cmd_SetMoonTexture_Execute(COMMAND_ARGS)
 		}
 	}
 	HOOK_SET(InitMoon, true);
-	(*g_currentSky)->RefreshMoon();
+	currSky->RefreshMoon();
 	HOOK_SET(InitMoon, false);
 	*result = 1;
 	return true;
@@ -732,13 +735,13 @@ bool Cmd_SetOnCraftingEventHandler_Execute(COMMAND_ARGS)
 
 bool Cmd_IsInKillCam_Execute(COMMAND_ARGS)
 {
-	*result = (g_VATSCameraData->mode == 4) && (g_thePlayer->killCamCooldown > 0);
+	*result = (VATSCameraData::Get()->mode == 4) && (g_thePlayer->killCamCooldown > 0);
 	return true;
 }
 
 bool Cmd_IsInKillCam_Eval(COMMAND_ARGS_EVAL)
 {
-	*result = (g_VATSCameraData->mode == 4) && (g_thePlayer->killCamCooldown > 0);
+	*result = (VATSCameraData::Get()->mode == 4) && (g_thePlayer->killCamCooldown > 0);
 	return true;
 }
 
@@ -836,7 +839,7 @@ bool Cmd_StringToActorValue_Execute(COMMAND_ARGS)
 			ActorValueInfo *avInfo;
 			for (UInt32 avCode = 0; avCode < 77; avCode++)
 			{
-				avInfo = g_actorValueInfoArray[avCode];
+				avInfo = ActorValueInfo::Array()[avCode];
 				s_actorValueIDsMap[avInfo->infoName] = avCode;
 			}
 		}
@@ -1156,9 +1159,10 @@ bool Cmd_RewardXPExact_Execute(COMMAND_ARGS)
 
 bool Cmd_ClearDeadActors_Execute(COMMAND_ARGS)
 {
-	UInt32 count = g_processManager->beginOffsets[0];
-	MobileObject **objArray = g_processManager->objects.data + count;
-	count = g_processManager->endOffsets[0] - count;
+	ProcessManager *procMngr = ProcessManager::Get();
+	UInt32 count = procMngr->beginOffsets[0];
+	MobileObject **objArray = procMngr->objects.data + count;
+	count = procMngr->endOffsets[0] - count;
 	Actor *actor;
 	HighProcess *hiProcess;
 	while (count)

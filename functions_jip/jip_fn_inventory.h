@@ -113,7 +113,7 @@ bool Cmd_SetWeaponRefModFlags_Execute(COMMAND_ARGS)
 			if (flags) xModFlags->flags = flags;
 			else
 			{
-				RemoveExtraData(xData, xModFlags, true);
+				xData->RemoveExtra(xModFlags, true);
 				if (!xData->m_data)
 				{
 					entry->extendData->Remove(xData);
@@ -124,14 +124,14 @@ bool Cmd_SetWeaponRefModFlags_Execute(COMMAND_ARGS)
 		else if (flags)
 		{
 			xData = SplitFromStack(entry, xData);
-			AddExtraData(xData, ExtraWeaponModFlags::Create(flags));
+			xData->AddExtra(ExtraWeaponModFlags::Create(flags));
 		}
 	}
 	else if (flags)
 	{
 		xData = invRef->CreateExtraData();
 		if (!xData) return true;
-		AddExtraData(xData, ExtraWeaponModFlags::Create(flags));
+		xData->AddExtra(ExtraWeaponModFlags::Create(flags));
 	}
 	*result = 1;
 	return true;
@@ -177,13 +177,13 @@ bool Cmd_SetItemRefCurrentHealth_Execute(COMMAND_ARGS)
 	{
 		ExtraHealth *xHealth = GetExtraType(xData, Health);
 		if (xHealth) xHealth->health = health;
-		else AddExtraData(xData, ExtraHealth::Create(health));
+		else xData->AddExtra(ExtraHealth::Create(health));
 	}
 	else
 	{
 		xData = invRef->CreateExtraData();
 		if (!xData) return true;
-		AddExtraData(xData, ExtraHealth::Create(health));
+		xData->AddExtra(ExtraHealth::Create(health));
 	}
 	*result = 1;
 	return true;
@@ -203,7 +203,7 @@ bool Cmd_SetHotkeyItemRef_Execute(COMMAND_ARGS)
 		return true;
 	if (!keyNum)
 	{
-		if (invRef->xData) RemoveExtraType(invRef->xData, kExtraData_Hotkey);
+		if (invRef->xData) invRef->xData->RemoveByType(kExtraData_Hotkey);
 		return true;
 	}
 	keyNum--;
@@ -215,7 +215,7 @@ bool Cmd_SetHotkeyItemRef_Execute(COMMAND_ARGS)
 		{
 			if (!ClearHotkey(keyNum))
 				return true;
-			AddExtraData(xData, ExtraHotkey::Create(keyNum));
+			xData->AddExtra(ExtraHotkey::Create(keyNum));
 		}
 		else if ((xHotkey->index == keyNum) || !ClearHotkey(keyNum))
 			return true;
@@ -225,7 +225,7 @@ bool Cmd_SetHotkeyItemRef_Execute(COMMAND_ARGS)
 	{
 		if (!ClearHotkey(keyNum) || !(xData = invRef->CreateExtraData()))
 			return true;
-		AddExtraData(xData, ExtraHotkey::Create(keyNum));
+		xData->AddExtra(ExtraHotkey::Create(keyNum));
 	}
 	*result = 1;
 	return true;
@@ -307,7 +307,7 @@ bool Cmd_DropAlt_Execute(COMMAND_ARGS)
 				{
 					if (hasScript && xData->HasType(kExtraData_Script))
 					{
-						RemoveExtraType(xData, kExtraData_Count);
+						xData->RemoveByType(kExtraData_Count);
 						subCount = 1;
 					}
 					else if (subCount > total)
@@ -439,7 +439,7 @@ bool Cmd_GetAllItemRefs_Execute(COMMAND_ARGS)
 				baseCount -= xCount;
 				if (noEquipped && xData->HasType(kExtraData_Worn))
 					continue;
-				invRef = CreateInventoryRef(thisObj, item, xCount, xData);
+				invRef = InventoryRefCreate(thisObj, item, xCount, xData);
 				if (listForm) listForm->list.Prepend(invRef);
 				else tmpElements->Append(invRef);
 				count++;
@@ -448,7 +448,7 @@ bool Cmd_GetAllItemRefs_Execute(COMMAND_ARGS)
 		}
 		if (baseCount > 0)
 		{
-			invRef = CreateInventoryRef(thisObj, item, baseCount, NULL);
+			invRef = InventoryRefCreate(thisObj, item, baseCount, NULL);
 			if (listForm) listForm->list.Prepend(invRef);
 			else tmpElements->Append(invRef);
 			count++;
@@ -509,9 +509,9 @@ bool Cmd_SetNoUnequip_Execute(COMMAND_ARGS)
 		if (xData)
 		{
 			if (!noUnequip)
-				RemoveExtraType(xData, kExtraData_CannotWear);
+				xData->RemoveByType(kExtraData_CannotWear);
 			else if (xData->HasType(kExtraData_Worn) && !xData->HasType(kExtraData_CannotWear))
-				AddExtraData(xData, ExtraCannotWear::Create());
+				xData->AddExtra(ExtraCannotWear::Create());
 		}
 	}
 	return true;
@@ -642,8 +642,6 @@ bool Cmd_GetEquippedArmorRefs_Execute(COMMAND_ARGS)
 			ExtraContainerChanges::EntryDataList *entryList = thisObj->GetContainerChangesList();
 			if (entryList)
 			{
-				TempFormList *tmpFormLst = GetTempFormList();
-				tmpFormLst->Clear();
 				TempElements *tmpElements = GetTempElements();
 				tmpElements->Clear();
 				ValidBip01Names::Data *slotData = equipment->slotData;
@@ -654,9 +652,9 @@ bool Cmd_GetEquippedArmorRefs_Execute(COMMAND_ARGS)
 				for (UInt32 count = 20; count; count--, slotData++)
 				{
 					item = slotData->item;
-					if (!item || NOT_TYPE(item, TESObjectARMO) || !tmpFormLst->Insert(item) || !(entry = entryList->FindForItem(item)) || !(xData = entry->GetEquippedExtra()))
+					if (!item || NOT_TYPE(item, TESObjectARMO) || !(entry = entryList->FindForItem(item)) || !(xData = entry->GetEquippedExtra()))
 						continue;
-					invRef = CreateInventoryRef(thisObj, item, entry->countDelta, xData);
+					invRef = InventoryRefCreate(thisObj, item, entry->countDelta, xData);
 					if (invRef) tmpElements->Append(invRef);
 				}
 				AssignCommandResult(CreateArray(tmpElements->Data(), tmpElements->Size(), scriptObj), result);
@@ -703,7 +701,7 @@ bool Cmd_GetHotkeyItemRef_Execute(COMMAND_ARGS)
 		ContChangesEntry *entry = GetHotkeyItemEntry(keyNum - 1, &xData);
 		if (entry)
 		{
-			TESObjectREFR *invRef = CreateInventoryRef(g_thePlayer, entry->type, xData->GetCount(), xData);
+			TESObjectREFR *invRef = InventoryRefCreate(g_thePlayer, entry->type, xData->GetCount(), xData);
 			REFR_RES = invRef->refID;
 		}
 	}

@@ -132,6 +132,7 @@ DEFINE_COMMAND_PLUGIN(SetTeammateKillable, , 1, 1, kParams_OneInt);
 DEFINE_COMMAND_PLUGIN(SetNoGunWobble, , 1, 1, kParams_OneInt);
 DEFINE_COMMAND_PLUGIN(GetHitNode, , 1, 0, NULL);
 DEFINE_COMMAND_PLUGIN(GetHitExtendedFlag, , 1, 1, kParams_OneInt);
+DEFINE_COMMAND_PLUGIN(RemoveAllPerks, , 1, 1, kParams_OneOptionalInt);
 
 bool Cmd_GetActorTemplate_Execute(COMMAND_ARGS)
 {
@@ -460,9 +461,10 @@ bool Cmd_GetActorsByProcessingLevel_Execute(COMMAND_ARGS)
 	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &procLevel) || (procLevel > 3)) return true;
 	TempElements *tmpElements = GetTempElements();
 	tmpElements->Clear();
-	MobileObject **objArray = g_processManager->objects.data, **arrEnd = objArray;
-	objArray += g_processManager->beginOffsets[procLevel];
-	arrEnd += g_processManager->endOffsets[procLevel];
+	ProcessManager *procMngr = ProcessManager::Get();
+	MobileObject **objArray = procMngr->objects.data, **arrEnd = objArray;
+	objArray += procMngr->beginOffsets[procLevel];
+	arrEnd += procMngr->endOffsets[procLevel];
 	Actor *actor;
 	for (; objArray != arrEnd; objArray++)
 	{
@@ -523,7 +525,7 @@ void __fastcall GetCombatActors(TESObjectREFR *thisObj, Script *scriptObj, bool 
 	Actor *actor;
 	TempElements *tmpElements = GetTempElements();
 	tmpElements->Clear();
-	if (thisObj == g_thePlayer)
+	if (thisObj->refID == 0x14)
 	{
 		CombatActors *cmbActors = g_thePlayer->combatActors;
 		if (!cmbActors) return;
@@ -594,11 +596,12 @@ void __fastcall GetDetectionData(TESObjectREFR *thisObj, Script *scriptObj, bool
 	TempElements *tmpElements = GetTempElements();
 	tmpElements->Clear();
 	Actor *actor = (Actor*)thisObj;
-	if (actor == g_thePlayer)
+	if (actor->refID == 0x14)
 	{
-		MobileObject **objArray = g_processManager->objects.data, **arrEnd = objArray;
-		objArray += g_processManager->beginOffsets[0];
-		arrEnd += g_processManager->endOffsets[0];
+		ProcessManager *procMngr = ProcessManager::Get();
+		MobileObject **objArray = procMngr->objects.data, **arrEnd = objArray;
+		objArray += procMngr->beginOffsets[0];
+		arrEnd += procMngr->endOffsets[0];
 		Actor *target;
 		for (; objArray != arrEnd; objArray++)
 		{
@@ -747,7 +750,7 @@ bool Cmd_IsInCombatWith_Execute(COMMAND_ARGS)
 	Actor *target;
 	if (ExtractArgsEx(EXTRACT_ARGS_EX, &target))
 	{
-		if (thisObj == g_thePlayer)
+		if (thisObj->refID == 0x14)
 		{
 			CombatActors *cmbActors = g_thePlayer->combatActors;
 			if (!cmbActors) return true;
@@ -830,7 +833,7 @@ bool Cmd_ResetFallTime_Execute(COMMAND_ARGS)
 float __fastcall GetRadiationLevelAlt(Actor *actor)
 {
 	if (NOT_ACTOR(actor) || !actor->baseProcess || actor->baseProcess->processLevel) return 0;
-	if (actor == g_thePlayer)
+	if (actor->refID == 0x14)
 	{
 		HighProcess *hiProc = (HighProcess*)actor->baseProcess;
 		return hiProc->waterRadsSec + hiProc->rads238 + hiProc->GetRadsSec();
@@ -1322,7 +1325,7 @@ bool Cmd_GetPerkModifier_Execute(COMMAND_ARGS)
 	float baseValue;
 	TESForm *filterForm1 = NULL, *filterForm2 = NULL;
 	if (NOT_ACTOR(thisObj) || !ExtractArgsEx(EXTRACT_ARGS_EX, &entryPointID, &baseValue, &filterForm1, &filterForm2) || (entryPointID > 73)) return true;
-	switch (g_entryPointConditionInfo[entryPointID].numTabs)
+	switch (EntryPointConditionInfo::Array()[entryPointID].numTabs)
 	{
 		case 1:
 			ApplyPerkModifiers(entryPointID, thisObj, &baseValue);
@@ -1429,7 +1432,7 @@ bool Cmd_PlayIdleEx_Execute(COMMAND_ARGS)
 	TESIdleForm *idleAnim = NULL;
 	Actor *actor = (Actor*)thisObj;
 	if (NOT_ACTOR(actor) || !actor->baseProcess || !ExtractArgsEx(EXTRACT_ARGS_EX, &idleAnim) || (idleAnim && NOT_ID(idleAnim, TESIdleForm))) return true;
-	if (!idleAnim) idleAnim = ThisCall<TESIdleForm*>(0x600950, *g_idleAnimsDirectoryMap, actor, actor->baseProcess->GetLowProcess40());
+	if (!idleAnim) idleAnim = ThisCall<TESIdleForm*>(0x600950, GameGlobals::IdleAnimsDirectoryMap(), actor, actor->baseProcess->GetLowProcess40());
 	else if (idleAnim->children) idleAnim = idleAnim->FindIdle(actor);
 	if (idleAnim) actor->PlayIdle(idleAnim);
 	return true;
@@ -1462,7 +1465,7 @@ bool Cmd_ReloadEquippedModels_Execute(COMMAND_ARGS)
 	Character *character = (Character*)thisObj;
 	if (character->IsCharacter() && character->GetNiNode() && character->validBip01Names)
 	{
-		bool isPlayer = character == g_thePlayer;
+		bool isPlayer = character->refID == 0x14;
 		ValidBip01Names::Data *slotData = character->validBip01Names->slotData;
 		UInt32 slotIdx;
 	Do1stPerson:
@@ -1929,7 +1932,7 @@ bool Cmd_DonnerReedKuruParty_Execute(COMMAND_ARGS)
 			if (xDismembered->wasEaten != wasEaten)
 			{
 				if (!wasEaten && !xDismembered->dismemberedMask)
-					RemoveExtraData(&thisObj->extraDataList, xDismembered, true);
+					thisObj->extraDataList.RemoveExtra(xDismembered, true);
 				else xDismembered->wasEaten = wasEaten;
 				thisObj->MarkAsModified(0x20000);
 			}
@@ -1939,7 +1942,7 @@ bool Cmd_DonnerReedKuruParty_Execute(COMMAND_ARGS)
 			xDismembered = (ExtraDismemberedLimbs*)GameHeapAlloc(sizeof(ExtraDismemberedLimbs));
 			ThisCall(0x430200, xDismembered);
 			xDismembered->wasEaten = true;
-			AddExtraData(&thisObj->extraDataList, xDismembered);
+			thisObj->extraDataList.AddExtra(xDismembered);
 			thisObj->MarkAsModified(0x20000);
 		}
 	}
@@ -2462,5 +2465,37 @@ bool Cmd_GetHitExtendedFlag_Execute(COMMAND_ARGS)
 		}
 	}
 	*result = isSet;
+	return true;
+}
+
+bool Cmd_RemoveAllPerks_Execute(COMMAND_ARGS)
+{
+	UInt32 forTeammates = 0;
+	if (IS_ACTOR(thisObj) && ExtractArgsEx(EXTRACT_ARGS_EX, &forTeammates))
+	{
+		Actor *actor = (Actor*)thisObj;
+		PerkRank *perkRank;
+		if (actor->refID == 0x14)
+		{
+			auto perkIter = forTeammates ? g_thePlayer->perkRanksTM.Head() : g_thePlayer->perkRanksPC.Head();
+			do
+			{
+				if (perkRank = perkIter->data)
+					actor->RemovePerk(perkRank->perk, forTeammates);
+			}
+			while (perkIter = perkIter->next);
+		}
+		else if (s_NPCPerks)
+		{
+			NPCPerksInfo *perksInfo = actor->extraDataList.perksInfo;
+			if (perksInfo)
+			{
+				for (auto perkIter = perksInfo->perkRanks.Begin(); perkIter; ++perkIter)
+					RemovePerkHook(actor, 0, perkIter.Key(), 0);
+				actor->extraDataList.perksInfo = NULL;
+				s_NPCPerksInfoMap.Erase(actor->refID);
+			}
+		}
+	}
 	return true;
 }

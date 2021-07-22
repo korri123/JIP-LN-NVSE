@@ -384,22 +384,20 @@ bool Cmd_ScriptWait_Execute(COMMAND_ARGS)
 {
 	if (_ReturnAddress() != (void*)0x5E234B) return true;
 	UInt32 iterNum;
-	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &iterNum) || !scriptObj->refID || (scriptObj->info.type > 1) || !iterNum) return true;
+	if (!ExtractArgsEx(EXTRACT_ARGS_EX, &iterNum) || !scriptObj->refID || (scriptObj->info.type > 1) || !iterNum)
+		return true;
 	TESForm *owner = scriptObj->info.type ? scriptObj->quest : (TESForm*)thisObj;
 	if (!owner) return true;
 	*opcodeOffsetPtr += *(UInt16*)(scriptData + *opcodeOffsetPtr - 2);
 	ScriptBlockIterator blockIter(scriptData, *opcodeOffsetPtr);
 	while (blockIter) ++blockIter;
 	UInt8 *blockType = blockIter.TypePtr();
-	if (!blockType || (*blockType == 0xD)) return true;
-	ScriptWaitInfo *waitInfo;
-	if (s_scriptWaitInfoMap.Insert(owner->refID, &waitInfo))
-	{
-		owner->jipFormFlags5 |= kHookFormFlag5_ScriptOnWait;
-		HOOK_MOD(ScriptRunner, true);
-		HOOK_MOD(EvalEventBlock, true);
-	}
-	waitInfo->Init(owner, iterNum, blockIter.NextOpOffset(), opcodeOffsetPtr);
+	if (!blockType || (*blockType == 0xD))
+		return true;
+	s_scriptWaitInfoMap[owner].Init(owner, iterNum, blockIter.NextOpOffset(), opcodeOffsetPtr);
+	owner->jipFormFlags5 |= kHookFormFlag5_ScriptOnWait;
+	HOOK_SET(ScriptRunner, true);
+	HOOK_SET(EvalEventBlock, true);
 	UInt32 *callerArgs = opcodeOffsetPtr + 6;
 	*(UInt32*)callerArgs[3] = blockIter.NextBlockOffset() - 4 - callerArgs[4];
 	return true;
@@ -416,7 +414,7 @@ bool Cmd_IsScriptWaiting_Execute(COMMAND_ARGS)
 			if (!thisObj) return true;
 			owner = thisObj;
 		}
-		if (s_scriptWaitInfoMap.HasKey(owner->refID))
+		if (owner->jipFormFlags5 & kHookFormFlag5_ScriptOnWait)
 			*result = 1;
 	}
 	return true;
@@ -432,8 +430,11 @@ bool Cmd_StopScriptWaiting_Execute(COMMAND_ARGS)
 			if (!thisObj) return true;
 			owner = thisObj;
 		}
-		ScriptWaitInfo *waitInfo = s_scriptWaitInfoMap.GetPtr(owner->refID);
-		if (waitInfo) waitInfo->iterNum = 1;
+		if (owner->jipFormFlags5 & kHookFormFlag5_ScriptOnWait)
+		{
+			ScriptWaitInfo *waitInfo = s_scriptWaitInfoMap.GetPtr(owner);
+			if (waitInfo) waitInfo->iterNum = 1;
+		}
 	}
 	return true;
 }
@@ -518,32 +519,31 @@ bool Cmd_DisableScriptedActivate_Execute(COMMAND_ARGS)
 	Script *script = xScript->script;
 	UInt8 *dataPtr = script->data, *endPtr = dataPtr + script->info.dataLength;
 	dataPtr += 4;
-	UInt16 lookFor = disable ? 0x100D : 0x2210, replace = disable ? 0x2210 : 0x100D, *opcode, length;
+	UInt16 lookFor = disable ? 0x100D : 0x2210, replace = disable ? 0x2210 : 0x100D, *opcodePtr, length;
+	bool onActivate = false;
 	while (dataPtr < endPtr)
 	{
-		opcode = (UInt16*)dataPtr;
+		opcodePtr = (UInt16*)dataPtr;
 		dataPtr += 2;
 		length = *(UInt16*)dataPtr;
 		dataPtr += 2;
-		if (*opcode == 0x10)
+		if (*opcodePtr == 0x11)
 		{
-			if (*(UInt16*)dataPtr != 2)
-			{
-				dataPtr += 2;
-				length = *(UInt16*)dataPtr + 6;
-			}
+			if (onActivate) break;
 		}
+		else if (*opcodePtr == 0x10)
+			onActivate = (*(UInt16*)dataPtr == 2);
 		else
 		{
-			if (*opcode == 0x1C)
+			if (*opcodePtr == 0x1C)
 			{
-				opcode = (UInt16*)dataPtr;
+				opcodePtr = (UInt16*)dataPtr;
 				dataPtr += 2;
 				length = *(UInt16*)dataPtr;
 				dataPtr += 2;
 			}
-			if (*opcode == lookFor)
-				*opcode = replace;
+			if (onActivate && (*opcodePtr == lookFor))
+				*opcodePtr = replace;
 		}
 		dataPtr += length;
 	}

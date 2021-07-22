@@ -84,6 +84,7 @@ DEFINE_COMMAND_PLUGIN(AttachExtraCamera, , 1, 3, kParams_JIP_OneString_OneInt_On
 DEFINE_COMMAND_PLUGIN(ProjectExtraCamera, , 0, 4, kParams_JIP_TwoStrings_OneDouble_OneOptionalInt);
 DEFINE_COMMAND_PLUGIN(RenameNifBlock, , 1, 3, kParams_JIP_TwoStrings_OneOptionalInt);
 DEFINE_COMMAND_PLUGIN(RemoveNifBlock, , 1, 2, kParams_JIP_OneString_OneOptionalInt);
+DEFINE_COMMAND_PLUGIN(PlayAnimSequence, , 1, 2, kParams_JIP_OneString_OneOptionalString);
 
 bool Cmd_SetPersistent_Execute(COMMAND_ARGS)
 {
@@ -236,7 +237,7 @@ bool Cmd_AddPrimitive_Execute(COMMAND_ARGS)
 		!thisObj->extraDataList.HasType(kExtraData_Primitive))
 	{
 		ExtraPrimitive *xPrimitive = ExtraPrimitive::Create();
-		AddExtraData(&thisObj->extraDataList, xPrimitive);
+		thisObj->extraDataList.AddExtra(xPrimitive);
 		UInt8 size = (type == 1) ? 0x4C : 0x34;
 		BGSPrimitive *primitive = (BGSPrimitive*)GameHeapAlloc(size);
 		MemZero(primitive, size);
@@ -365,9 +366,9 @@ bool Cmd_ToggleObjectCollision_Execute(COMMAND_ARGS)
 {
 	UInt32 enable;
 	if (ExtractArgsEx(EXTRACT_ARGS_EX, &enable) && NOT_ACTOR(thisObj) && !kInventoryType[thisObj->baseForm->typeID] && 
-		(!enable == !(thisObj->extraDataList.jipRefFlags61 & kHookRefFlag61_DisableCollision)))
+		(!enable == !(thisObj->extraDataList.jipRefFlags5F & kHookRefFlag61_DisableCollision)))
 	{
-		thisObj->extraDataList.jipRefFlags61 ^= kHookRefFlag61_DisableCollision;
+		thisObj->extraDataList.jipRefFlags5F ^= kHookRefFlag61_DisableCollision;
 		thisObj->Update3D();
 	}
 	return true;
@@ -897,7 +898,7 @@ bool Cmd_IsAnimPlayingEx_Execute(COMMAND_ARGS)
 			{
 				animID = groupID & 0xFF;
 				if (animID >= 245) continue;
-				classify = &s_animGroupClassify[animID];
+				classify = &kAnimGroupClassify[animID];
 				if ((classify->category == category) && ((category >= 4) || ((!subType || (classify->subType == subType)) && (!flags || (classify->flags & flags)))))
 				{
 					*result = 1;
@@ -952,12 +953,29 @@ bool Cmd_MoveToContainer_Execute(COMMAND_ARGS)
 		{
 			ExtraCount *xCount = GetExtraType(&thisObj->extraDataList, Count);
 			if (xCount) quantity = xCount->count;
-			if (clrOwner) RemoveExtraType(&thisObj->extraDataList, kExtraData_Ownership);
-			xDataList = thisObj->extraDataList.CreateCopy();
-			ClearExtraDataList(&thisObj->extraDataList, true);
+			ExtraItemDropper *xDropper = GetExtraType(&thisObj->extraDataList, ItemDropper);
+			if (xDropper)
+			{
+				TESObjectREFR *dropperRef = xDropper->dropper;
+				thisObj->extraDataList.RemoveExtra(xDropper, true);
+				if (dropperRef)
+				{
+					ExtraDroppedItemList *xDroppedList = GetExtraType(&dropperRef->extraDataList, DroppedItemList);
+					if (xDroppedList && xDroppedList->itemRefs.Remove(thisObj) && xDroppedList->itemRefs.Empty())
+						dropperRef->extraDataList.RemoveExtra(xDroppedList, true);
+				}
+			}
+			if (clrOwner) thisObj->extraDataList.RemoveByType(kExtraData_Ownership);
+			if (thisObj->extraDataList.m_data)
+			{
+				xDataList = thisObj->extraDataList.CreateCopy();
+				thisObj->extraDataList.RemoveAll(true);
+			}
 		}
 		target->AddItem(thisObj->baseForm, xDataList, quantity);
-		thisObj->DeleteReference();
+		if (thisObj->modIndex == 0xFF)
+			thisObj->DeleteReference();
+		else thisObj->Disable();
 	}
 	return true;
 }
@@ -1511,8 +1529,8 @@ bool Cmd_SetExtraFloat_Execute(COMMAND_ARGS)
 				{
 					SInt32 count = invRef->GetCount();
 					if (count > 1)
-						AddExtraData(xData, ExtraCount::Create(count));
-					AddExtraData(xData, ExtraCharge::Create(fltVal));
+						xData->AddExtra(ExtraCount::Create(count));
+					xData->AddExtra(ExtraCharge::Create(fltVal));
 				}
 				return true;
 			}
@@ -1521,7 +1539,7 @@ bool Cmd_SetExtraFloat_Execute(COMMAND_ARGS)
 		ExtraCharge *xCharge = GetExtraType(xData, Charge);
 		if (xCharge)
 			xCharge->charge = fltVal;
-		else AddExtraData(xData, ExtraCharge::Create(fltVal));
+		else xData->AddExtra(ExtraCharge::Create(fltVal));
 	}
 	return true;
 }
@@ -1552,13 +1570,19 @@ bool RegisterInsertObject(COMMAND_ARGS)
 	TESForm *form;
 	UInt32 doInsert;
 	char *buffer = GetStrArgBuffer();
-	if (ExtractFormatStringArgs(2, buffer, EXTRACT_ARGS_EX, kCommandInfo_AttachModel.numParams, &form, &doInsert) && (form->modIndex != 0xFF))
+	if (ExtractFormatStringArgs(2, buffer, EXTRACT_ARGS_EX, kCommandInfo_AttachModel.numParams, &form, &doInsert))
 	{
 		TESObjectREFR *refr = IS_REFERENCE(form) ? (TESObjectREFR*)form : NULL;
+		NiNode *rootNode = (refr && refr->renderState) ? refr->renderState->niNode14 : NULL;
+		bool modifyMap = true;
 		if (refr)
 		{
-			if (kInventoryType[refr->baseForm->typeID])
-				return true;
+			if ((refr->modIndex == 0xFF) || kInventoryType[refr->baseForm->typeID])
+			{
+				if ((doInsert != 3) || !rootNode)
+					return true;
+				modifyMap = false;
+			}
 		}
 		else if (!form->IsBoundObject())
 			return true;
@@ -1576,8 +1600,6 @@ bool RegisterInsertObject(COMMAND_ARGS)
 		bool insertNode = s_insertObjectFlag == kHookFormFlag6_InsertNode;
 		auto formsMap = insertNode ? &s_insertNodeMap : &s_attachModelMap;
 
-		NiNode *rootNode = (refr && refr->renderState) ? refr->renderState->niNode14 : NULL;
-
 		if (doInsert & 1)
 		{
 			if (!insertNode)
@@ -1594,15 +1616,19 @@ bool RegisterInsertObject(COMMAND_ARGS)
 					return true;
 			}
 
-			NodeNamesMap *namesMap;
-			if (formsMap->Insert(form, &namesMap))
-				form->SetJIPFlag(s_insertObjectFlag, true);
-			NiString blockName(nodeName), *dataStr;
-			if (!(*namesMap)[blockName].Insert(objectName, &dataStr))
-				return true;
+			NiString blockName(nodeName), dataStr, *pDataStr;
+			if (modifyMap)
+			{
+				NodeNamesMap *namesMap;
+				if (formsMap->Insert(form, &namesMap))
+					form->SetJIPFlag(s_insertObjectFlag, true);
+				if (!(*namesMap)[blockName].Insert(objectName, &pDataStr))
+					return true;
+			}
+			else pDataStr = &dataStr;
 
 			if (insertNode)
-				*dataStr = objectName + (*objectName == '^');
+				*pDataStr = objectName + (*objectName == '^');
 
 			if (rootNode && (doInsert & 2))
 			{
@@ -1611,18 +1637,18 @@ bool RegisterInsertObject(COMMAND_ARGS)
 				if (targetObj)
 				{
 					if (insertNode)
-						DoInsertNode(targetObj, objectName, dataStr->Get(), rootNode);
-					else if ((rootNode = DoAttachModel(targetObj, objectName, dataStr, rootNode)) && (rootNode->m_flags & 0x20000000))
+						DoInsertNode(targetObj, objectName, pDataStr->Get(), rootNode);
+					else if ((rootNode = DoAttachModel(targetObj, objectName, pDataStr, rootNode)) && (rootNode->m_flags & 0x20000000))
 						AddPointLights(rootNode);
 				}
-				if ((refr == g_thePlayer) && (rootNode = g_thePlayer->node1stPerson))
+				if ((refr->refID == 0x14) && (rootNode = g_thePlayer->node1stPerson))
 				{
 					targetObj = useRoot ? rootNode : rootNode->GetBlockByName(blockName.Get());
 					if (targetObj)
 					{
 						if (insertNode)
-							DoInsertNode(targetObj, objectName, dataStr->Get(), rootNode);
-						else DoAttachModel(targetObj, objectName, dataStr, rootNode);
+							DoInsertNode(targetObj, objectName, pDataStr->Get(), rootNode);
+						else DoAttachModel(targetObj, objectName, pDataStr, rootNode);
 					}
 				}
 			}
@@ -1640,7 +1666,7 @@ bool RegisterInsertObject(COMMAND_ARGS)
 				NiAVObject *object = rootNode->GetBlockByName(findData().Get());
 				if (object)
 					object->m_parent->RemoveObject(object);
-				if ((refr == g_thePlayer) && (rootNode = g_thePlayer->node1stPerson))
+				if ((refr->refID == 0x14) && (rootNode = g_thePlayer->node1stPerson))
 				{
 					object = rootNode->GetBlockByName(findData().Get());
 					if (object)
@@ -1754,7 +1780,7 @@ bool Cmd_ModelHasBlock_Execute(COMMAND_ARGS)
 			const char *modelPath = form->GetModelPath();
 			if (modelPath)
 			{
-				rootNode = LoadModel(g_modelLoader, modelPath, 0, 1, 0, 0, 1);
+				rootNode = g_modelLoader->LoadModel(modelPath, 0, 1, 0, 1);
 				if (rootNode && rootNode->GetBlock(buffer + 1))
 					goto Retn1;
 			}
@@ -1984,7 +2010,7 @@ bool Cmd_AttachExtraCamera_Execute(COMMAND_ARGS)
 				NiCamera **pCamera;
 				if (s_extraCamerasMap.Insert(camName, &pCamera))
 				{
-					*pCamera = xCamera = ThisCall<NiCamera*>(0xA712F0, NiAllocator(sizeof(NiCamera)));
+					*pCamera = xCamera = NiCamera::Create();
 					InterlockedIncrement(&xCamera->m_uiRefCount);
 					xCamera->SetName(camName);
 					xCamera->frustum.n = 5.0F;
@@ -2019,8 +2045,7 @@ bool Cmd_AttachExtraCamera_Execute(COMMAND_ARGS)
 	return true;
 }
 
-extern UInt8 s_useAltFormat;
-void __fastcall GenerateRenderedTextureHook(TESObjectCELL *cell, int EDX, NiCamera *camera, RenderTarget **outTexture);
+void __fastcall GenerateRenderedTexture(TESObjectCELL *cell, int EDX, NiCamera *camera, RenderTarget **outTexture);
 
 __declspec(naked) void __stdcall ProjectExtraCamera(NiCamera *camera, NiTexture **pTexture)
 {
@@ -2036,9 +2061,7 @@ __declspec(naked) void __stdcall ProjectExtraCamera(NiCamera *camera, NiTexture 
 		push	esp
 		push	dword ptr [ebp+8]
 		xor		ecx, ecx
-		mov		s_useAltFormat, 2
-		call	GenerateRenderedTextureHook
-		mov		s_useAltFormat, 0
+		call	GenerateRenderedTexture
 		mov		byte ptr ds:[0x11AD7B4], 1
 		mov		eax, [ebp-4]
 		mov		byte ptr [eax+0x1B], 0
@@ -2132,6 +2155,38 @@ bool Cmd_RemoveNifBlock_Execute(COMMAND_ARGS)
 		{
 			niBlock->m_parent->RemoveObject(niBlock);
 			*result = 1;
+		}
+	}
+	return true;
+}
+
+bool Cmd_PlayAnimSequence_Execute(COMMAND_ARGS)
+{
+	*result = 0;
+	char sequenceName[0x40], nodeName[0x40];
+	nodeName[0] = 0;
+	if (ExtractArgsEx(EXTRACT_ARGS_EX, &sequenceName, &nodeName))
+	{
+		NiNode *targetNode = thisObj->GetNode(nodeName);
+		if (targetNode)
+		{
+			NiControllerManager *ctrlMgr = (NiControllerManager*)targetNode->m_controller;
+			if (ctrlMgr && IS_TYPE(ctrlMgr, NiControllerManager))
+			{
+				NiControllerSequence *sequence = ctrlMgr->seqStrMap.Lookup(sequenceName);
+				if (sequence)
+				{
+					for (auto iter = ctrlMgr->sequences.Begin(); iter; ++iter)
+						if (*iter && iter->sequenceName && (*(UInt32*)iter->sequenceName != 'eldI'))
+							iter->Unk_23(0, 0);
+					if (sequence->Play())
+					{
+						thisObj->Unk_32(1);
+						thisObj->MarkAsModified(0x10000000);
+						*result = 1;
+					}
+				}
+			}
 		}
 	}
 	return true;
